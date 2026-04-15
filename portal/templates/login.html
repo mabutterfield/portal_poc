@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Guest WiFi Access</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body {
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+    }
+
+    .portal-card {
+      background: #fff;
+      border-radius: 14px;
+      padding: 2.5rem;
+      max-width: 420px;
+      width: 100%;
+      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.35);
+    }
+
+    .portal-header {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+
+    .wifi-icon {
+      font-size: 2.8rem;
+      line-height: 1;
+    }
+
+    .portal-header h5 {
+      margin-top: 0.75rem;
+      font-weight: 700;
+      color: #0f3460;
+    }
+
+    .portal-header .ssid-label {
+      font-size: 0.8rem;
+      color: #888;
+    }
+
+    .form-label {
+      font-weight: 600;
+      font-size: 0.9rem;
+      color: #333;
+    }
+
+    .form-control {
+      border-radius: 8px;
+      border: 1.5px solid #ddd;
+      padding: 0.6rem 0.9rem;
+      font-size: 0.95rem;
+    }
+
+    .form-control:focus {
+      border-color: #0f3460;
+      box-shadow: 0 0 0 3px rgba(15, 52, 96, 0.12);
+    }
+
+    /* Tier selection cards */
+    .tier-card {
+      border: 2px solid #e0e0e0;
+      border-radius: 10px;
+      padding: 0.9rem 1rem;
+      margin-bottom: 0.65rem;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      display: block;
+      user-select: none;
+    }
+
+    .tier-card:hover {
+      border-color: #aac4e8;
+      background: #f5f9ff;
+    }
+
+    .tier-card.selected {
+      border-color: #0f3460;
+      background: #f0f5ff;
+    }
+
+    .tier-card input[type="radio"] {
+      display: none;
+    }
+
+    .tier-icon {
+      font-size: 1.5rem;
+      width: 2rem;
+      text-align: center;
+      flex-shrink: 0;
+    }
+
+    .tier-name {
+      font-weight: 700;
+      font-size: 0.95rem;
+      color: #1a1a2e;
+    }
+
+    .tier-desc {
+      font-size: 0.8rem;
+      color: #666;
+      margin-top: 0.1rem;
+    }
+
+    .btn-connect {
+      background: #0f3460;
+      border: none;
+      border-radius: 8px;
+      padding: 0.75rem;
+      font-size: 1rem;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+      transition: background 0.2s;
+    }
+
+    .btn-connect:hover {
+      background: #16213e;
+    }
+
+    .footer-note {
+      font-size: 0.75rem;
+      color: #aaa;
+      text-align: center;
+      margin-top: 1.25rem;
+      margin-bottom: 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="portal-card">
+
+    <div class="portal-header">
+      <div class="wifi-icon">📶</div>
+      <h5>Guest WiFi Access</h5>
+      {% if ssid %}
+        <div class="ssid-label">Network: <strong>{{ ssid }}</strong></div>
+      {% endif %}
+    </div>
+
+    {% if error %}
+      <div class="alert alert-danger py-2 mb-3" style="font-size: 0.88rem; border-radius: 8px;">
+        {{ error }}
+      </div>
+    {% endif %}
+
+    <form method="POST" action="/login" id="portal-form">
+
+      <div class="mb-3">
+        <label class="form-label">Your Name</label>
+        <input type="text"
+               name="username"
+               class="form-control"
+               placeholder="Enter your name"
+               autocomplete="name"
+               required
+               value="{{ request.form.get('username', '') }}">
+      </div>
+
+      <div class="mb-4">
+        <label class="form-label">Access Type</label>
+
+        <label class="tier-card" id="card-free">
+          <input type="radio" name="group" value="free"
+                 {% if request.form.get('group') == 'free' %}checked{% endif %}>
+          <div class="d-flex align-items-center gap-3">
+            <div class="tier-icon">🌐</div>
+            <div>
+              <div class="tier-name">Free Guest</div>
+              <div class="tier-desc">Standard access &middot; complimentary</div>
+            </div>
+          </div>
+        </label>
+
+        <label class="tier-card" id="card-premium">
+          <input type="radio" name="group" value="premium"
+                 {% if request.form.get('group') == 'premium' %}checked{% endif %}>
+          <div class="d-flex align-items-center gap-3">
+            <div class="tier-icon">⭐</div>
+            <div>
+              <div class="tier-name">Premium Guest</div>
+              <div class="tier-desc">Enhanced access &middot; loyalty members &amp; packages</div>
+            </div>
+          </div>
+        </label>
+      </div>
+
+      <button type="submit" class="btn btn-connect btn-primary w-100 text-white">
+        Connect to WiFi
+      </button>
+
+    </form>
+
+    <p class="footer-note">
+      By connecting you agree to our acceptable use policy.
+    </p>
+  </div>
+
+  <script>
+    // Highlight the selected tier card on click and on page load (after validation error)
+    function syncCards() {
+      document.querySelectorAll('input[name="group"]').forEach(radio => {
+        const card = radio.closest('.tier-card');
+        card.classList.toggle('selected', radio.checked);
+      });
+    }
+
+    document.querySelectorAll('input[name="group"]').forEach(radio => {
+      radio.addEventListener('change', syncCards);
+    });
+
+    syncCards(); // Run on load to restore state after form error
+  </script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+#
+# Fortinet Vendor Specific Attributes for FreeRADIUS
+# Vendor ID: 12356
+#
+# These attributes are returned in the RADIUS Access-Accept response.
+# FortiGate uses Fortinet-Group-Name to assign the authenticated client
+# to a local user group, which determines firewall policy and QoS.
+#
+
+VENDOR          Fortinet                12356
+
+BEGIN-VENDOR    Fortinet
+ATTRIBUTE       Fortinet-Group-Name         1   string
+ATTRIBUTE       Fortinet-Client-IP-Address  2   ipaddr
+ATTRIBUTE       Fortinet-Vdom-Name          3   string
+ATTRIBUTE       Fortinet-Client-MAC-Addr    4   string
+ATTRIBUTE       Fortinet-VDOM-IP            5   ipaddr
+ATTRIBUTE       Fortinet-Access-Profile     7   string
+END-VENDOR      Fortinet

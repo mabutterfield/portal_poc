@@ -1,0 +1,2 @@
+# Place portal.crt and portal.key in this directory.
+# They will be mounted read-only into the portal container at /certs/

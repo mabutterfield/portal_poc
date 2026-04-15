@@ -1,0 +1,19 @@
+#
+# FreeRADIUS authorize (users) file
+#
+# Two service accounts — one per access tier.
+# The portal maps the guest's group selection to one of these usernames
+# and POSTs it (via FortiGate fgtauth) to trigger RADIUS auth.
+#
+# FreeRADIUS returns Fortinet-Group-Name in the Access-Accept response.
+# FortiGate matches this to its local user group config and applies
+# the corresponding firewall policy and traffic shaping profile.
+#
+# %%SHARED_SECRET%% is substituted at container startup.
+#
+
+svc_free    Cleartext-Password := "%%SHARED_SECRET%%"
+            Fortinet-Group-Name = "free_guests"
+
+svc_premium Cleartext-Password := "%%SHARED_SECRET%%"
+            Fortinet-Group-Name = "premium_guests"

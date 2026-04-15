@@ -1,0 +1,163 @@
+================================================================================
+FortiGate Configuration Reference — Captive Portal POC
+================================================================================
+
+Replace <PORTAL_SERVER_IP> with the IP of your portal Linux server.
+Replace <SHARED_SECRET> with the value set in your .env file.
+Replace v302 / 10.252.12.254 with your actual guest interface details.
+
+--------------------------------------------------------------------------------
+1. RADIUS Server
+--------------------------------------------------------------------------------
+
+config user radius
+    edit "captive-portal-radius"
+        set server "<PORTAL_SERVER_IP>"
+        set secret "<SHARED_SECRET>"
+        set auth-type auto
+    next
+end
+
+
+--------------------------------------------------------------------------------
+2. User Groups (mapped from Fortinet-Group-Name VSA returned by FreeRADIUS)
+--------------------------------------------------------------------------------
+
+config user group
+    edit "free_guests"
+        set member "captive-portal-radius"
+        config match
+            edit 1
+                set server-name "captive-portal-radius"
+                set group-name "free_guests"
+            next
+        end
+    next
+    edit "premium_guests"
+        set member "captive-portal-radius"
+        config match
+            edit 1
+                set server-name "captive-portal-radius"
+                set group-name "premium_guests"
+            next
+        end
+    next
+end
+
+
+--------------------------------------------------------------------------------
+3. Guest Interface
+--------------------------------------------------------------------------------
+
+config system interface
+    edit "v302"
+        set security-mode captive-portal
+        set security-external-web "https://<PORTAL_SERVER_IP>/auth"
+        set security-groups "free_guests"
+        set security-groups "premium_guests"
+    next
+end
+
+NOTE: FortiGate allows multiple security-groups on an interface.
+      Both groups are listed so either can be authenticated into.
+
+
+--------------------------------------------------------------------------------
+4. Traffic Shaping Profiles (one per tier)
+--------------------------------------------------------------------------------
+
+config firewall shaper traffic-shaper
+    edit "shape-free-guest"
+        set guaranteed-bandwidth 512
+        set maximum-bandwidth 5120
+        set per-policy enable
+    next
+    edit "shape-premium-guest"
+        set guaranteed-bandwidth 2048
+        set maximum-bandwidth 20480
+        set per-policy enable
+    next
+end
+
+
+--------------------------------------------------------------------------------
+5. Firewall Policies (guest VLAN to WAN, one per group)
+--------------------------------------------------------------------------------
+
+config firewall policy
+    edit 100
+        set name "guest-free-to-wan"
+        set srcintf "v302"
+        set dstintf "wan1"
+        set srcaddr "all"
+        set dstaddr "all"
+        set action accept
+        set schedule "always"
+        set service "ALL"
+        set groups "free_guests"
+        set nat enable
+        set traffic-shaper "shape-free-guest"
+        set traffic-shaper-reverse "shape-free-guest"
+    next
+    edit 101
+        set name "guest-premium-to-wan"
+        set srcintf "v302"
+        set dstintf "wan1"
+        set srcaddr "all"
+        set dstaddr "all"
+        set action accept
+        set schedule "always"
+        set service "ALL"
+        set groups "premium_guests"
+        set nat enable
+        set traffic-shaper "shape-premium-guest"
+        set traffic-shaper-reverse "shape-premium-guest"
+    next
+end
+
+
+--------------------------------------------------------------------------------
+6. Walled Garden (allow portal and RADIUS traffic before auth)
+--------------------------------------------------------------------------------
+
+config firewall policy
+    edit 99
+        set name "guest-pre-auth-walled-garden"
+        set srcintf "v302"
+        set dstintf "wan1"
+        set srcaddr "all"
+        set dstaddr "<PORTAL_SERVER_IP>/32"
+        set action accept
+        set schedule "always"
+        set service "HTTPS"
+        set nat enable
+    next
+end
+
+NOTE: Policy 99 must be ordered ABOVE policies 100 and 101 so unauthenticated
+      clients can reach the portal server before auth completes.
+
+
+--------------------------------------------------------------------------------
+7. Verify RADIUS Connectivity
+--------------------------------------------------------------------------------
+
+# From FortiGate CLI — test that FortiGate can reach FreeRADIUS:
+diagnose test authserver radius captive-portal-radius pap svc_free <SHARED_SECRET>
+
+# Expected response: authenticated successfully
+# If it fails: check UDP 1812 is reachable and shared secret matches
+
+
+--------------------------------------------------------------------------------
+8. Clear Sessions for Testing
+--------------------------------------------------------------------------------
+
+# After config changes, clear your test client's session:
+diagnose sys session filter src <your-test-client-ip>
+diagnose sys session clear
+
+# Test the redirect with HTTP (not HTTPS):
+# curl -v http://example.com     (from a client behind v302)
+
+================================================================================

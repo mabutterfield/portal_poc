@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+
+  portal:
+    build: ./portal
+    container_name: captive_portal
+    ports:
+      - "443:443"
+    volumes:
+      - ${CERT_PATH:-./certs}:/certs:ro
+    environment:
+      - FLASK_SECRET_KEY=${FLASK_SECRET_KEY:-change-this-to-a-random-string}
+      - SHARED_SECRET=${SHARED_SECRET:-ch4ng3m3}
+    depends_on:
+      - freeradius
+    restart: unless-stopped
+
+  freeradius:
+    build: ./freeradius
+    container_name: captive_radius
+    ports:
+      - "1812:1812/udp"
+      - "1813:1813/udp"
+    environment:
+      - SHARED_SECRET=${SHARED_SECRET:-ch4ng3m3}
+      - FORTIGATE_IP=${FORTIGATE_IP:-127.0.0.1}
+    restart: unless-stopped

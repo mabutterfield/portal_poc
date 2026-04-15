@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Connection Error</title>
+  <style>
+    body {
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+    }
+
+    .error-card {
+      background: #fff;
+      border-radius: 14px;
+      padding: 2.5rem;
+      max-width: 400px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.35);
+    }
+
+    .error-icon {
+      font-size: 3rem;
+      line-height: 1;
+    }
+
+    h5 {
+      margin-top: 1rem;
+      font-weight: 700;
+      color: #0f3460;
+    }
+
+    p {
+      color: #555;
+      font-size: 0.9rem;
+      margin: 0.75rem 0 1.5rem;
+    }
+
+    .btn-retry {
+      background: #0f3460;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 0.6rem 1.5rem;
+      font-size: 0.9rem;
+      font-weight: 600;
+      text-decoration: none;
+      display: inline-block;
+      transition: background 0.2s;
+    }
+
+    .btn-retry:hover {
+      background: #16213e;
+      color: #fff;
+    }
+  </style>
+</head>
+<body>
+  <div class="error-card">
+    <div class="error-icon">⚠️</div>
+    <h5>Connection Problem</h5>
+    <p>{{ message }}</p>
+    <a href="javascript:history.back()" class="btn-retry">Try Again</a>
+  </div>
+</body>
+</html>
