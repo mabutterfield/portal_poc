@@ -9,7 +9,13 @@ sed -i "s|%%SHARED_SECRET%%|${SECRET}|g"  /etc/freeradius/clients.conf
 sed -i "s|%%FORTIGATE_IP%%|${FGT_IP}|g"   /etc/freeradius/clients.conf
 sed -i "s|%%SHARED_SECRET%%|${SECRET}|g"  /etc/freeradius/mods-config/files/authorize
 
+# Enable authentication logging in radiusd.conf
+sed -i 's/^\s*auth = no/\tauth = yes/'          /etc/freeradius/radiusd.conf
+sed -i 's/^\s*auth_badpass = no/\tauth_badpass = yes/' /etc/freeradius/radiusd.conf
+sed -i 's/^\s*auth_goodpass = no/\tauth_goodpass = yes/' /etc/freeradius/radiusd.conf
+
 echo "[entrypoint] Configured client: ${FGT_IP}"
+echo "[entrypoint] Auth logging enabled."
 
 echo "[entrypoint] FreeRADIUS starting with shared secret configured."
 
