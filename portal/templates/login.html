@@ -162,6 +162,27 @@
                value="{{ request.form.get('username', '') }}">
       </div>
 
+      <div class="mb-3">
+        <label class="form-label">Room Number</label>
+        <input type="text"
+               name="room"
+               class="form-control"
+               placeholder="e.g. 412"
+               required
+               value="{{ request.form.get('room', '') }}">
+      </div>
+
+      <div class="mb-4">
+        <label class="form-label">Check-out Date &amp; Time</label>
+        <input type="datetime-local"
+               name="checkout"
+               id="checkout"
+               class="form-control"
+               required
+               value="{{ request.form.get('checkout', '') }}">
+        <div class="form-text">Your internet access will expire at check-out.</div>
+      </div>
+
       <div class="mb-4">
         <label class="form-label">Access Type</label>
 

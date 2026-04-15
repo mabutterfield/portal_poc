@@ -71,10 +71,11 @@
   </form>
 
   <script>
-    // Small delay so the spinner is visible before the browser navigates away
+    // Delay gives FortiGate time to fully commit the session before
+    // the browser submits and follows the redirect.
     setTimeout(function () {
       document.getElementById('fgtform').submit();
-    }, 600);
+    }, 1500);
   </script>
 
 </body>

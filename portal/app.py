@@ -56,7 +56,7 @@ def auth():
             message='Invalid portal request. Please disconnect and reconnect to the network.'
         )
 
-    # Store FortiGate session parameters — needed when the form is submitted
+# Store FortiGate session parameters — needed when the form is submitted
     session.clear()
     session['magic']    = magic
     session['post_url'] = post_url
