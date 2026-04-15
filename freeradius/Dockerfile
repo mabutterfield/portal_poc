@@ -2,13 +2,10 @@ FROM freeradius/freeradius-server:latest
 
 # Copy our custom config files over the image defaults.
 # FreeRADIUS 3.x in this image uses /etc/freeradius/ as the config root.
-COPY clients.conf        /etc/freeradius/clients.conf
-COPY authorize           /etc/freeradius/mods-config/files/authorize
-COPY dictionary.fortinet /etc/freeradius/dictionary.fortinet
+COPY clients.conf /etc/freeradius/clients.conf
+COPY authorize    /etc/freeradius/mods-config/files/authorize
 
-# Append Fortinet dictionary reference to the main dictionary
-RUN echo '$INCLUDE /etc/freeradius/dictionary.fortinet' \
-    >> /etc/freeradius/dictionary
+# Fortinet dictionary is already included in FreeRADIUS 3.2.8 — no need to add it.
 
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
