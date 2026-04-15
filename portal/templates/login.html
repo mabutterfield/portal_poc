@@ -162,7 +162,7 @@
                value="{{ request.form.get('username', '') }}">
       </div>
 
-      <div class="mb-3">
+      <div class="mb-4">
         <label class="form-label">Room Number</label>
         <input type="text"
                name="room"
@@ -170,17 +170,6 @@
                placeholder="e.g. 412"
                required
                value="{{ request.form.get('room', '') }}">
-      </div>
-
-      <div class="mb-4">
-        <label class="form-label">Check-out Date &amp; Time</label>
-        <input type="datetime-local"
-               name="checkout"
-               id="checkout"
-               class="form-control"
-               required
-               value="{{ request.form.get('checkout', '') }}">
-        <div class="form-text">Your internet access will expire at check-out.</div>
       </div>
 
       <div class="mb-4">
@@ -193,7 +182,7 @@
             <div class="tier-icon">🌐</div>
             <div>
               <div class="tier-name">Free Guest</div>
-              <div class="tier-desc">Standard access &middot; complimentary</div>
+              <div class="tier-desc">Standard access &middot; complimentary &middot; 4 hours</div>
             </div>
           </div>
         </label>
@@ -205,7 +194,7 @@
             <div class="tier-icon">⭐</div>
             <div>
               <div class="tier-name">Premium Guest</div>
-              <div class="tier-desc">Enhanced access &middot; loyalty members &amp; packages</div>
+              <div class="tier-desc">Enhanced access &middot; loyalty members &amp; packages &middot; 16 hours</div>
             </div>
           </div>
         </label>

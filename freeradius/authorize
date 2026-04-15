@@ -5,15 +5,22 @@
 # The portal maps the guest's group selection to one of these usernames
 # and POSTs it (via FortiGate fgtauth) to trigger RADIUS auth.
 #
-# FreeRADIUS returns Fortinet-Group-Name in the Access-Accept response.
-# FortiGate matches this to its local user group config and applies
-# the corresponding firewall policy and traffic shaping profile.
+# FreeRADIUS returns Fortinet-Group-Name and Session-Timeout in the
+# Access-Accept response.
+#   free_guests:    4 hours  = 14400 seconds
+#   premium_guests: 16 hours = 57600 seconds
 #
-# %%SHARED_SECRET%% is substituted at container startup.
+# Session-Timeout (attr 27) overrides FortiGate's auth-timeout for the
+# duration of the session.  When it expires, FortiGate de-authenticates
+# the client and the captive portal catches them again on next request.
+#
+# %%SHARED_SECRET%% is substituted at container startup via entrypoint.sh.
 #
 
 svc_free    Cleartext-Password := "%%SHARED_SECRET%%"
-            Fortinet-Group-Name = "free_guests"
+            Fortinet-Group-Name = "free_guests",
+            Session-Timeout = 14400
 
 svc_premium Cleartext-Password := "%%SHARED_SECRET%%"
-            Fortinet-Group-Name = "premium_guests"
+            Fortinet-Group-Name = "premium_guests",
+            Session-Timeout = 57600

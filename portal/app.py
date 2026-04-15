@@ -14,8 +14,9 @@ logger = logging.getLogger(__name__)
 SHARED_SECRET = os.environ.get('SHARED_SECRET', 'ch4ng3m3')
 
 # Maps the user's group selection to the RADIUS service account.
-# FortiGate will forward these credentials to FreeRADIUS, which returns
-# the Fortinet-Group-Name VSA to assign the correct policy group.
+# FreeRADIUS returns Fortinet-Group-Name + Session-Timeout per account:
+#   svc_free    → free_guests,    Session-Timeout = 14400 (4 h)
+#   svc_premium → premium_guests, Session-Timeout = 57600 (16 h)
 GROUP_MAP = {
     'free':    'svc_free',
     'premium': 'svc_premium',
@@ -27,7 +28,7 @@ def auth():
     """
     Entry point — FortiGate redirects unauthenticated clients here.
 
-    Expected parameters from FortiGate:
+    Expected query parameters from FortiGate:
       post      URL to POST credentials back to (FortiGate fgtauth endpoint)
       magic     Opaque session token — must be echoed back verbatim
       usermac   Client MAC address
@@ -56,7 +57,7 @@ def auth():
             message='Invalid portal request. Please disconnect and reconnect to the network.'
         )
 
-# Store FortiGate session parameters — needed when the form is submitted
+    # Store FortiGate session parameters — needed when the form is submitted.
     session.clear()
     session['magic']    = magic
     session['post_url'] = post_url
@@ -82,17 +83,20 @@ def login():
     then renders a hidden auto-submitting form that the client's browser
     POSTs directly to FortiGate's fgtauth endpoint.
 
-    The auto-submit approach means the portal server does not need a direct
-    route to FortiGate's internal interface — the client, who is already on
-    that network, does the final POST.
+    FreeRADIUS returns Fortinet-Group-Name and a static Session-Timeout
+    (4 h free / 16 h premium) in the Access-Accept.
     """
     display_name = request.form.get('username', '').strip()
+    room         = request.form.get('room', '').strip()
     group        = request.form.get('group', '')
 
     ssid = session.get('ssid', '')
 
     if not display_name:
         return render_template('login.html', ssid=ssid, error='Please enter your name.')
+
+    if not room:
+        return render_template('login.html', ssid=ssid, error='Please enter your room number.')
 
     if group not in GROUP_MAP:
         return render_template('login.html', ssid=ssid, error='Please select an access type.')
@@ -110,15 +114,15 @@ def login():
     radius_user = GROUP_MAP[group]
 
     logger.info(
-        f"Auth granted — name={display_name!r}, group={group}, "
+        f"Auth granted — name={display_name!r}, room={room!r}, group={group}, "
         f"radius_user={radius_user}, mac={session.get('usermac')}, "
         f"ip={session.get('userip')}"
     )
 
     # Render the auto-submit page.
-    # The client's browser will POST magic + service credentials to FortiGate.
-    # FortiGate validates against FreeRADIUS, receives Fortinet-Group-Name,
-    # assigns the policy group, and redirects the client to their original URL.
+    # The client's browser POSTs magic + service credentials to FortiGate.
+    # FortiGate validates against FreeRADIUS, receives Fortinet-Group-Name
+    # + Session-Timeout, assigns the policy group, and redirects the client.
     return render_template(
         'submit.html',
         post_url=post_url,
@@ -131,7 +135,7 @@ def login():
 
 
 if __name__ == '__main__':
-    # Development only — in production gunicorn is used (see Dockerfile CMD)
+    # Development only — in production gunicorn is used (see Dockerfile)
     app.run(
         host='0.0.0.0',
         port=443,
