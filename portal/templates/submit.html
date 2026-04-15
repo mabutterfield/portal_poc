@@ -18,6 +18,7 @@
     .connecting-card {
       text-align: center;
       padding: 2rem;
+      max-width: 360px;
     }
 
     .spinner {
@@ -44,14 +45,41 @@
       opacity: 0.7;
       margin: 0;
     }
+
+    .fallback-notice {
+      margin-top: 1rem;
+      background: rgba(255, 200, 50, 0.15);
+      border: 1px solid rgba(255, 200, 50, 0.4);
+      border-radius: 8px;
+      padding: 0.65rem 0.9rem;
+      font-size: 0.82rem;
+      color: #ffe082;
+      line-height: 1.4;
+    }
   </style>
 </head>
 <body>
 
   <div class="connecting-card">
     <div class="spinner"></div>
-    <h5>Connecting, {{ display_name }}…</h5>
-    <p>Activating your {{ group }} access.</p>
+
+    {% if fallback %}
+      <h5>Connecting…</h5>
+      <p>Activating public guest access.</p>
+      <div class="fallback-notice">
+        ⚠ Room {{ room }} could not be verified.<br>
+        Connecting as a Public guest instead.<br>
+        Please visit the front desk if you believe this is an error.
+      </div>
+    {% else %}
+      <h5>Connecting, {{ display_name }}…</h5>
+      <p>Activating your
+        {% if group == 'public' %}public
+        {% elif group == 'premium' %}premium
+        {% else %}guest
+        {% endif %}
+        access.</p>
+    {% endif %}
   </div>
 
   <!--
@@ -73,9 +101,10 @@
   <script>
     // Delay gives FortiGate time to fully commit the session before
     // the browser submits and follows the redirect.
+    // Slightly longer on fallback so the user can read the notice.
     setTimeout(function () {
       document.getElementById('fgtform').submit();
-    }, 1500);
+    }, {{ 3000 if fallback else 1500 }});
   </script>
 
 </body>

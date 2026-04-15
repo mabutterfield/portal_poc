@@ -108,6 +108,46 @@
       margin-top: 0.1rem;
     }
 
+    /* Guest fields slide */
+    #guest-fields {
+      overflow: hidden;
+      transition: max-height 0.25s ease, opacity 0.2s ease;
+      max-height: 0;
+      opacity: 0;
+    }
+
+    #guest-fields.visible {
+      max-height: 200px;
+      opacity: 1;
+    }
+
+    /* EULA */
+    .eula-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.6rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .eula-row input[type="checkbox"] {
+      margin-top: 3px;
+      flex-shrink: 0;
+      width: 1.1rem;
+      height: 1.1rem;
+      accent-color: #0f3460;
+      cursor: pointer;
+    }
+
+    .eula-row label {
+      font-size: 0.85rem;
+      color: #555;
+      cursor: pointer;
+    }
+
+    .eula-row a {
+      color: #0f3460;
+    }
+
     .btn-connect {
       background: #0f3460;
       border: none;
@@ -116,18 +156,23 @@
       font-size: 1rem;
       font-weight: 700;
       letter-spacing: 0.3px;
-      transition: background 0.2s;
+      transition: background 0.2s, opacity 0.2s;
     }
 
-    .btn-connect:hover {
+    .btn-connect:hover:not(:disabled) {
       background: #16213e;
+    }
+
+    .btn-connect:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
     }
 
     .footer-note {
       font-size: 0.75rem;
       color: #aaa;
       text-align: center;
-      margin-top: 1.25rem;
+      margin-top: 1rem;
       margin-bottom: 0;
     }
   </style>
@@ -151,29 +196,21 @@
 
     <form method="POST" action="/login" id="portal-form">
 
+      <!-- Access Type -->
       <div class="mb-3">
-        <label class="form-label">Your Name</label>
-        <input type="text"
-               name="username"
-               class="form-control"
-               placeholder="Enter your name"
-               autocomplete="name"
-               required
-               value="{{ request.form.get('username', '') }}">
-      </div>
-
-      <div class="mb-4">
-        <label class="form-label">Room Number</label>
-        <input type="text"
-               name="room"
-               class="form-control"
-               placeholder="e.g. 412"
-               required
-               value="{{ request.form.get('room', '') }}">
-      </div>
-
-      <div class="mb-4">
         <label class="form-label">Access Type</label>
+
+        <label class="tier-card" id="card-public">
+          <input type="radio" name="group" value="public"
+                 {% if request.form.get('group', 'public') == 'public' %}checked{% endif %}>
+          <div class="d-flex align-items-center gap-3">
+            <div class="tier-icon">🌍</div>
+            <div>
+              <div class="tier-name">Public</div>
+              <div class="tier-desc">Lobby &amp; visitors &middot; no room required &middot; 2 hours</div>
+            </div>
+          </div>
+        </label>
 
         <label class="tier-card" id="card-free">
           <input type="radio" name="group" value="free"
@@ -181,7 +218,7 @@
           <div class="d-flex align-items-center gap-3">
             <div class="tier-icon">🌐</div>
             <div>
-              <div class="tier-name">Free Guest</div>
+              <div class="tier-name">Hotel Guest</div>
               <div class="tier-desc">Standard access &middot; complimentary &middot; 4 hours</div>
             </div>
           </div>
@@ -194,37 +231,101 @@
             <div class="tier-icon">⭐</div>
             <div>
               <div class="tier-name">Premium Guest</div>
-              <div class="tier-desc">Enhanced access &middot; loyalty members &amp; packages &middot; 16 hours</div>
+              <div class="tier-desc">Enhanced access &middot; loyalty &amp; packages &middot; 16 hours</div>
             </div>
           </div>
         </label>
       </div>
 
-      <button type="submit" class="btn btn-connect btn-primary w-100 text-white">
+      <!-- Name + Room (shown for hotel guests only) -->
+      <div id="guest-fields">
+        <div class="mb-3">
+          <label class="form-label">Last Name</label>
+          <input type="text"
+                 name="username"
+                 id="username"
+                 class="form-control"
+                 placeholder="Enter your last name"
+                 autocomplete="family-name"
+                 value="{{ request.form.get('username', '') }}">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Room Number</label>
+          <input type="text"
+                 name="room"
+                 id="room"
+                 class="form-control"
+                 placeholder="e.g. 412"
+                 value="{{ request.form.get('room', '') }}">
+        </div>
+      </div>
+
+      <!-- EULA -->
+      <div class="eula-row mb-2">
+        <input type="checkbox" id="eula" name="eula">
+        <label for="eula">
+          I agree to the
+          <a href="#" onclick="return false;">acceptable use policy</a>
+          and understand that network activity may be monitored.
+        </label>
+      </div>
+
+      <button type="submit" id="submit-btn" class="btn btn-connect btn-primary w-100 text-white" disabled>
         Connect to WiFi
       </button>
 
     </form>
 
-    <p class="footer-note">
-      By connecting you agree to our acceptable use policy.
-    </p>
   </div>
 
   <script>
-    // Highlight the selected tier card on click and on page load (after validation error)
-    function syncCards() {
-      document.querySelectorAll('input[name="group"]').forEach(radio => {
-        const card = radio.closest('.tier-card');
-        card.classList.toggle('selected', radio.checked);
+    const form       = document.getElementById('portal-form');
+    const eulaBox    = document.getElementById('eula');
+    const submitBtn  = document.getElementById('submit-btn');
+    const guestFields = document.getElementById('guest-fields');
+    const usernameInput = document.getElementById('username');
+    const roomInput  = document.getElementById('room');
+
+    // -----------------------------------------------------------------------
+    // Tier card selection — highlight and show/hide guest fields
+    // -----------------------------------------------------------------------
+    function syncTier() {
+      const radios = document.querySelectorAll('input[name="group"]');
+      let selected = 'public';
+      radios.forEach(r => {
+        const card = r.closest('.tier-card');
+        card.classList.toggle('selected', r.checked);
+        if (r.checked) selected = r.value;
       });
+
+      const needsRoom = (selected === 'free' || selected === 'premium');
+      guestFields.classList.toggle('visible', needsRoom);
+      usernameInput.required = needsRoom;
+      roomInput.required     = needsRoom;
     }
 
-    document.querySelectorAll('input[name="group"]').forEach(radio => {
-      radio.addEventListener('change', syncCards);
+    document.querySelectorAll('input[name="group"]').forEach(r => {
+      r.addEventListener('change', syncTier);
     });
 
-    syncCards(); // Run on load to restore state after form error
+    // -----------------------------------------------------------------------
+    // EULA checkbox — gates the submit button
+    // -----------------------------------------------------------------------
+    eulaBox.addEventListener('change', () => {
+      submitBtn.disabled = !eulaBox.checked;
+    });
+
+    // -----------------------------------------------------------------------
+    // Init on load — restores state after a validation error round-trip
+    // -----------------------------------------------------------------------
+    syncTier();
+
+    // Restore EULA state on error re-render (form re-posts the eula field)
+    const eulaChecked = "{{ 'true' if request.form.get('eula') else 'false' }}";
+    if (eulaChecked === 'true') {
+      eulaBox.checked  = true;
+      submitBtn.disabled = false;
+    }
   </script>
 </body>
 </html>

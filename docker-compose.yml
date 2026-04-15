@@ -12,8 +12,11 @@ services:
     environment:
       - FLASK_SECRET_KEY=${FLASK_SECRET_KEY:-change-this-to-a-random-string}
       - SHARED_SECRET=${SHARED_SECRET:-ch4ng3m3}
+      - MOCK_PMS_URL=http://mock_pms:5000
+      - PMS_TIMEOUT=3
     depends_on:
       - freeradius
+      - mock_pms
     restart: unless-stopped
 
   freeradius:
@@ -26,3 +29,18 @@ services:
       - SHARED_SECRET=${SHARED_SECRET:-ch4ng3m3}
       - FORTIGATE_IP=${FORTIGATE_IP:-127.0.0.1}
     restart: unless-stopped
+
+  mock_pms:
+    build: ./mock_pms
+    container_name: captive_mock_pms
+    ports:
+      - "5000:5000"
+    volumes:
+      - pms_data:/data
+    environment:
+      - DB_PATH=/data/pms.db
+      - FLASK_SECRET_KEY=${FLASK_SECRET_KEY:-pms-admin-key}
+    restart: unless-stopped
+
+volumes:
+  pms_data:

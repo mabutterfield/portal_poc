@@ -23,7 +23,20 @@ end
 2. User Groups (mapped from Fortinet-Group-Name VSA returned by FreeRADIUS)
 --------------------------------------------------------------------------------
 
+Three groups, one per access tier.  FreeRADIUS returns the group name in the
+Fortinet-Group-Name VSA; FortiGate matches it here and applies the
+corresponding firewall policy and traffic shaping.
+
 config user group
+    edit "public_guests"
+        set member "captive-portal-radius"
+        config match
+            edit 1
+                set server-name "captive-portal-radius"
+                set group-name "public_guests"
+            next
+        end
+    next
     edit "free_guests"
         set member "captive-portal-radius"
         config match
@@ -53,20 +66,51 @@ config system interface
     edit "v302"
         set security-mode captive-portal
         set security-external-web "https://<PORTAL_SERVER_IP>/auth"
+        set security-groups "public_guests"
         set security-groups "free_guests"
         set security-groups "premium_guests"
     next
 end
 
-NOTE: FortiGate allows multiple security-groups on an interface.
-      Both groups are listed so either can be authenticated into.
+NOTE: All three groups must be listed so any tier can authenticate.
 
 
 --------------------------------------------------------------------------------
-4. Traffic Shaping Profiles (one per tier)
+4. Session Timeout Settings
+--------------------------------------------------------------------------------
+
+# auth-timeout-type hard  — session expires at exactly Session-Timeout from
+#                           RADIUS, regardless of traffic activity.
+#                           This is the correct mode for captive portal.
+#
+# auth-timeout 1440       — local ceiling set to 24 hours (maximum allowed).
+#                           RADIUS Session-Timeout always fires first:
+#                             public_guests:  7200 s =  2 h
+#                             free_guests:   14400 s =  4 h
+#                             premium_guests:57600 s = 16 h
+
+config user setting
+    set auth-timeout 1440
+    set auth-timeout-type hard
+end
+
+VERIFY after connecting a test client:
+    diagnose firewall auth list
+Expected:
+    expire:   ~86400  (local 24-hour ceiling — will NOT fire first)
+    max-life: 7200 / 14400 / 57600  (RADIUS Session-Timeout — this kills session)
+
+
+--------------------------------------------------------------------------------
+5. Traffic Shaping Profiles (one per tier)
 --------------------------------------------------------------------------------
 
 config firewall shaper traffic-shaper
+    edit "shape-public-guest"
+        set guaranteed-bandwidth 256
+        set maximum-bandwidth 2048
+        set per-policy enable
+    next
     edit "shape-free-guest"
         set guaranteed-bandwidth 512
         set maximum-bandwidth 5120
@@ -81,10 +125,37 @@ end
 
 
 --------------------------------------------------------------------------------
-5. Firewall Policies (guest VLAN to WAN, one per group)
+6. Firewall Policies (guest VLAN to WAN, one per group)
 --------------------------------------------------------------------------------
 
+Policies must be ordered: walled-garden (98) > public (99) > free (100) > premium (101)
+
 config firewall policy
+    edit 98
+        set name "guest-pre-auth-walled-garden"
+        set srcintf "v302"
+        set dstintf "wan1"
+        set srcaddr "all"
+        set dstaddr "<PORTAL_SERVER_IP>/32"
+        set action accept
+        set schedule "always"
+        set service "HTTPS"
+        set nat enable
+    next
+    edit 99
+        set name "guest-public-to-wan"
+        set srcintf "v302"
+        set dstintf "wan1"
+        set srcaddr "all"
+        set dstaddr "all"
+        set action accept
+        set schedule "always"
+        set service "ALL"
+        set groups "public_guests"
+        set nat enable
+        set traffic-shaper "shape-public-guest"
+        set traffic-shaper-reverse "shape-public-guest"
+    next
     edit 100
         set name "guest-free-to-wan"
         set srcintf "v302"
@@ -115,49 +186,32 @@ config firewall policy
     next
 end
 
-
---------------------------------------------------------------------------------
-6. Walled Garden (allow portal and RADIUS traffic before auth)
---------------------------------------------------------------------------------
-
-config firewall policy
-    edit 99
-        set name "guest-pre-auth-walled-garden"
-        set srcintf "v302"
-        set dstintf "wan1"
-        set srcaddr "all"
-        set dstaddr "<PORTAL_SERVER_IP>/32"
-        set action accept
-        set schedule "always"
-        set service "HTTPS"
-        set nat enable
-    next
-end
-
-NOTE: Policy 99 must be ordered ABOVE policies 100 and 101 so unauthenticated
-      clients can reach the portal server before auth completes.
+NOTE: Policy 98 (walled garden) must sit above the group policies so
+      unauthenticated clients can reach the portal before auth completes.
 
 
 --------------------------------------------------------------------------------
-7. Verify RADIUS Connectivity
+7. Diagnostic Commands
 --------------------------------------------------------------------------------
 
-# From FortiGate CLI — test that FortiGate can reach FreeRADIUS:
-diagnose test authserver radius captive-portal-radius pap svc_free <SHARED_SECRET>
+# Test RADIUS reachability and verify Session-Timeout + group are returned:
+diagnose test authserver radius captive-portal-radius pap svc_public  <SHARED_SECRET>
+diagnose test authserver radius captive-portal-radius pap svc_free    <SHARED_SECRET>
+diagnose test authserver radius captive-portal-radius pap svc_premium <SHARED_SECRET>
+# Look for Fortinet-Group-Name and Session-Timeout in each response.
 
-# Expected response: authenticated successfully
-# If it fails: check UDP 1812 is reachable and shared secret matches
+# List authenticated sessions (confirms expire vs max-life timers):
+diagnose firewall auth list
 
+# Clear a specific client session for re-testing:
+diagnose firewall auth filter src <client-ip>
+diagnose firewall auth clear
 
---------------------------------------------------------------------------------
-8. Clear Sessions for Testing
---------------------------------------------------------------------------------
+# Clear all guest auth sessions:
+diagnose firewall auth clear
 
-# After config changes, clear your test client's session:
-diagnose sys session filter src <your-test-client-ip>
+# Clear firewall sessions (forces client to re-authenticate):
+diagnose sys session filter src <client-ip>
 diagnose sys session clear
-
-# Test the redirect with HTTP (not HTTPS):
-# curl -v http://example.com     (from a client behind v302)
 
 ================================================================================

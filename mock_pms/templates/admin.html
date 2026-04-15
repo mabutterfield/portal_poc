@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PMS Admin</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { background: #f4f6f9; font-family: 'Segoe UI', system-ui, sans-serif; }
+
+    .sidebar {
+      min-height: 100vh;
+      background: #0f3460;
+      color: #fff;
+      padding: 1.5rem 1rem;
+      width: 200px;
+      flex-shrink: 0;
+    }
+
+    .sidebar h6 {
+      font-size: 0.7rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.45);
+      margin: 1.2rem 0 0.4rem;
+    }
+
+    .sidebar .brand {
+      font-weight: 700;
+      font-size: 1rem;
+      color: #fff;
+      text-decoration: none;
+      display: block;
+      margin-bottom: 1rem;
+    }
+
+    .sidebar .brand span { opacity: 0.55; font-weight: 400; font-size: 0.8rem; display:block; }
+
+    .sidebar a.nav-link {
+      color: rgba(255,255,255,0.75);
+      border-radius: 6px;
+      padding: 0.45rem 0.75rem;
+      font-size: 0.9rem;
+    }
+
+    .sidebar a.nav-link:hover,
+    .sidebar a.nav-link.active {
+      background: rgba(255,255,255,0.12);
+      color: #fff;
+    }
+
+    .main { flex: 1; padding: 2rem; min-width: 0; }
+
+    .page-title {
+      font-weight: 700;
+      font-size: 1.4rem;
+      color: #1a1a2e;
+      margin-bottom: 1.5rem;
+    }
+
+    .card { border: none; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.07); }
+    .card-header { background: #fff; border-bottom: 1px solid #eee; font-weight: 600; border-radius: 10px 10px 0 0 !important; }
+
+    .badge-free    { background: #e3f0ff; color: #0f3460; font-weight: 600; }
+    .badge-premium { background: #fff8e1; color: #b8860b; font-weight: 600; }
+    .badge-public  { background: #f0f0f0; color: #555;    font-weight: 600; }
+
+    .status-matched   { color: #198754; }
+    .status-not_found { color: #dc3545; }
+    .status-fallback  { color: #fd7e14; }
+    .status-bad_request { color: #6c757d; }
+
+    table { font-size: 0.875rem; }
+    th { font-weight: 600; color: #555; white-space: nowrap; }
+    td { vertical-align: middle; }
+
+    .btn-xs { padding: 0.2rem 0.5rem; font-size: 0.78rem; }
+
+    .filter-bar { background: #fff; border-radius: 8px; padding: 0.75rem 1rem;
+                  box-shadow: 0 1px 4px rgba(0,0,0,0.06); margin-bottom: 1rem; }
+  </style>
+</head>
+<body>
+<div class="d-flex">
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <a class="brand" href="/admin">
+      PMS Admin
+      <span>Mock Property System</span>
+    </a>
+    <h6>Navigation</h6>
+    <nav class="nav flex-column gap-1">
+      <a class="nav-link {% if page in ('dashboard','edit') %}active{% endif %}"
+         href="/admin">🏨 Guests</a>
+      <a class="nav-link {% if page == 'logs' %}active{% endif %}"
+         href="/admin/logs">📋 Query Log</a>
+    </nav>
+  </div>
+
+  <!-- Main content -->
+  <div class="main">
+
+    <!-- Flash messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, msg in messages %}
+        <div class="alert alert-{{ category }} alert-dismissible fade show py-2 mb-3"
+             style="font-size:0.88rem; border-radius:8px;">
+          {{ msg }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+      {% endfor %}
+    {% endwith %}
+
+    {# ================================================================ #}
+    {# GUESTS / DASHBOARD                                               #}
+    {# ================================================================ #}
+    {% if page in ('dashboard', 'edit') %}
+
+      <div class="page-title">Guest Records</div>
+
+      <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center py-2">
+          <span>Current Guests</span>
+          <button class="btn btn-primary btn-sm" data-bs-toggle="modal"
+                  data-bs-target="#addModal">+ Add Guest</button>
+        </div>
+        <div class="card-body p-0">
+          <table class="table table-hover mb-0">
+            <thead class="table-light">
+              <tr>
+                <th class="ps-3">Room</th>
+                <th>Last Name</th>
+                <th>First Name</th>
+                <th>Tier</th>
+                <th>Check-out</th>
+                <th>Notes</th>
+                <th class="pe-3">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% if guests %}
+                {% for g in guests %}
+                <tr>
+                  <td class="ps-3 fw-bold">{{ g.room }}</td>
+                  <td>{{ g.last_name }}</td>
+                  <td>{{ g.first_name }}</td>
+                  <td>
+                    <span class="badge badge-{{ g.tier }}">{{ g.tier }}</span>
+                  </td>
+                  <td>{{ g.checkout_dt or '—' }}</td>
+                  <td style="max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                    {{ g.notes or '' }}
+                  </td>
+                  <td class="pe-3">
+                    <a href="/admin/guests/{{ g.id }}/edit"
+                       class="btn btn-outline-secondary btn-xs me-1">Edit</a>
+                    <form method="POST" action="/admin/guests/{{ g.id }}/delete"
+                          style="display:inline;"
+                          onsubmit="return confirm('Delete {{ g.first_name }} {{ g.last_name }} in room {{ g.room }}?')">
+                      <button type="submit" class="btn btn-outline-danger btn-xs">Delete</button>
+                    </form>
+                  </td>
+                </tr>
+                {% endfor %}
+              {% else %}
+                <tr><td colspan="7" class="text-center text-muted py-3">No guests found.</td></tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {# ---- Edit form (shown instead of table when page='edit') ---- #}
+      {% if page == 'edit' and edit_guest %}
+      <div class="card mb-4">
+        <div class="card-header py-2">Edit Guest — Room {{ edit_guest.room }}</div>
+        <div class="card-body">
+          <form method="POST" action="/admin/guests/{{ edit_guest.id }}/edit">
+            <div class="row g-3">
+              <div class="col-sm-2">
+                <label class="form-label">Room</label>
+                <input type="text" name="room" class="form-control"
+                       value="{{ edit_guest.room }}" required>
+              </div>
+              <div class="col-sm-3">
+                <label class="form-label">Last Name</label>
+                <input type="text" name="last_name" class="form-control"
+                       value="{{ edit_guest.last_name }}" required>
+              </div>
+              <div class="col-sm-3">
+                <label class="form-label">First Name</label>
+                <input type="text" name="first_name" class="form-control"
+                       value="{{ edit_guest.first_name }}" required>
+              </div>
+              <div class="col-sm-2">
+                <label class="form-label">Tier</label>
+                <select name="tier" class="form-select">
+                  <option value="free"    {% if edit_guest.tier == 'free'    %}selected{% endif %}>free</option>
+                  <option value="premium" {% if edit_guest.tier == 'premium' %}selected{% endif %}>premium</option>
+                </select>
+              </div>
+              <div class="col-sm-4">
+                <label class="form-label">Check-out</label>
+                <input type="datetime-local" name="checkout_dt" class="form-control"
+                       value="{{ edit_guest.checkout_dt or '' }}">
+              </div>
+              <div class="col-sm-8">
+                <label class="form-label">Notes</label>
+                <input type="text" name="notes" class="form-control"
+                       value="{{ edit_guest.notes or '' }}">
+              </div>
+              <div class="col-12">
+                <button type="submit" class="btn btn-primary me-2">Save</button>
+                <a href="/admin" class="btn btn-outline-secondary">Cancel</a>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+      {% endif %}
+
+    {# ================================================================ #}
+    {# QUERY LOG                                                        #}
+    {# ================================================================ #}
+    {% elif page == 'logs' %}
+
+      <div class="page-title">Query Log</div>
+
+      <div class="filter-bar d-flex align-items-end gap-3 flex-wrap">
+        <form method="GET" action="/admin/logs" class="d-flex gap-2 flex-wrap align-items-end">
+          <div>
+            <label class="form-label mb-1" style="font-size:0.82rem;">Room</label>
+            <input type="text" name="room" class="form-control form-control-sm"
+                   placeholder="e.g. 412" value="{{ filter_room or '' }}" style="width:90px;">
+          </div>
+          <div>
+            <label class="form-label mb-1" style="font-size:0.82rem;">Status</label>
+            <select name="status" class="form-select form-select-sm" style="width:130px;">
+              <option value="">All</option>
+              <option value="matched"     {% if filter_status == 'matched'     %}selected{% endif %}>matched</option>
+              <option value="not_found"   {% if filter_status == 'not_found'   %}selected{% endif %}>not_found</option>
+              <option value="fallback"    {% if filter_status == 'fallback'    %}selected{% endif %}>fallback</option>
+              <option value="bad_request" {% if filter_status == 'bad_request' %}selected{% endif %}>bad_request</option>
+            </select>
+          </div>
+          <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+          <a href="/admin/logs" class="btn btn-outline-secondary btn-sm">Clear</a>
+        </form>
+        <form method="POST" action="/admin/logs/clear" class="ms-auto"
+              onsubmit="return confirm('Clear the entire query log?')">
+          <button type="submit" class="btn btn-outline-danger btn-sm">🗑 Clear Log</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-hover mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th class="ps-3">Timestamp</th>
+                  <th>Room</th>
+                  <th>Last Name Input</th>
+                  <th>Matched</th>
+                  <th>Matched Name</th>
+                  <th>Tier</th>
+                  <th>Client MAC</th>
+                  <th>Client IP</th>
+                  <th>NAS IP</th>
+                  <th class="pe-3">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% if logs %}
+                  {% for log in logs %}
+                  <tr>
+                    <td class="ps-3" style="white-space:nowrap;">{{ log.ts }}</td>
+                    <td class="fw-bold">{{ log.room or '—' }}</td>
+                    <td>{{ log.last_name_input or '—' }}</td>
+                    <td>
+                      {% if log.matched %}
+                        <span class="text-success fw-bold">✓ Yes</span>
+                      {% else %}
+                        <span class="text-danger">✗ No</span>
+                      {% endif %}
+                    </td>
+                    <td>{{ log.matched_name or '—' }}</td>
+                    <td>
+                      {% if log.returned_tier %}
+                        <span class="badge badge-{{ log.returned_tier }}">{{ log.returned_tier }}</span>
+                      {% else %}—{% endif %}
+                    </td>
+                    <td style="font-family:monospace; font-size:0.8rem;">{{ log.client_mac or '—' }}</td>
+                    <td style="font-family:monospace; font-size:0.8rem;">{{ log.client_ip or '—' }}</td>
+                    <td style="font-family:monospace; font-size:0.8rem;">{{ log.nas_ip or '—' }}</td>
+                    <td class="pe-3">
+                      <span class="status-{{ log.status }}">{{ log.status or '—' }}</span>
+                      {% if log.notes %}
+                        <span class="text-muted ms-1" title="{{ log.notes }}" style="cursor:help;">ℹ</span>
+                      {% endif %}
+                    </td>
+                  </tr>
+                  {% endfor %}
+                {% else %}
+                  <tr><td colspan="10" class="text-center text-muted py-3">No log entries found.</td></tr>
+                {% endif %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    {% endif %}
+
+  </div>{# end .main #}
+</div>{# end d-flex #}
+
+
+{# ================================================================ #}
+{# ADD GUEST MODAL                                                  #}
+{# ================================================================ #}
+<div class="modal fade" id="addModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="POST" action="/admin/guests/add">
+        <div class="modal-header">
+          <h5 class="modal-title">Add Guest</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-sm-3">
+              <label class="form-label">Room *</label>
+              <input type="text" name="room" class="form-control" required placeholder="412">
+            </div>
+            <div class="col-sm-4">
+              <label class="form-label">Last Name *</label>
+              <input type="text" name="last_name" class="form-control" required>
+            </div>
+            <div class="col-sm-5">
+              <label class="form-label">First Name *</label>
+              <input type="text" name="first_name" class="form-control" required>
+            </div>
+            <div class="col-sm-4">
+              <label class="form-label">Tier</label>
+              <select name="tier" class="form-select">
+                <option value="free">free</option>
+                <option value="premium">premium</option>
+              </select>
+            </div>
+            <div class="col-sm-8">
+              <label class="form-label">Check-out</label>
+              <input type="datetime-local" name="checkout_dt" class="form-control">
+            </div>
+            <div class="col-12">
+              <label class="form-label">Notes</label>
+              <input type="text" name="notes" class="form-control"
+                     placeholder="e.g. loyalty member, package includes premium">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Add Guest</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
