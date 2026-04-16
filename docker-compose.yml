@@ -42,5 +42,26 @@ services:
       - FLASK_SECRET_KEY=${FLASK_SECRET_KEY:-pms-admin-key}
     restart: unless-stopped
 
+  portal_capport:
+    build: ./portal_capport
+    container_name: captive_capport
+    ports:
+      - "8443:8443"
+    volumes:
+      - ${CERT_PATH:-./certs}:/certs:ro
+    environment:
+      - FLASK_SECRET_KEY=${FLASK_SECRET_KEY:-change-this-to-a-random-string}
+      - SHARED_SECRET=${SHARED_SECRET:-ch4ng3m3}
+      - MOCK_PMS_URL=http://mock_pms:5000
+      - MOCK_PMS_ADMIN_URL=http://localhost:5000/admin
+      - FGT_HOST=${FGT_HOST:-10.255.112.50}
+      - FGT_API_TOKEN=${FGT_API_TOKEN:-}
+      - FGT_VDOM=${FGT_VDOM:-root}
+      - FGT_VERIFY_TLS=${FGT_VERIFY_TLS:-false}
+      - CAPPORT_SERVER_URL=${CAPPORT_SERVER_URL:-https://localhost:8443}
+    depends_on:
+      - mock_pms
+    restart: unless-stopped
+
 volumes:
   pms_data:

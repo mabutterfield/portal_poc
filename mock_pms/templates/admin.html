@@ -244,6 +244,14 @@
               <option value="bad_request" {% if filter_status == 'bad_request' %}selected{% endif %}>bad_request</option>
             </select>
           </div>
+          <div>
+            <label class="form-label mb-1" style="font-size:0.82rem;">Source</label>
+            <select name="source" class="form-select form-select-sm" style="width:110px;">
+              <option value="">All</option>
+              <option value="302"     {% if filter_source == '302'     %}selected{% endif %}>302 (UAM)</option>
+              <option value="capport" {% if filter_source == 'capport' %}selected{% endif %}>CAPPORT</option>
+            </select>
+          </div>
           <button type="submit" class="btn btn-primary btn-sm">Filter</button>
           <a href="/admin/logs" class="btn btn-outline-secondary btn-sm">Clear</a>
         </form>
@@ -260,6 +268,7 @@
               <thead class="table-light">
                 <tr>
                   <th class="ps-3">Timestamp</th>
+                  <th>Source</th>
                   <th>Room</th>
                   <th>Last Name Input</th>
                   <th>Matched</th>
@@ -276,6 +285,13 @@
                   {% for log in logs %}
                   <tr>
                     <td class="ps-3" style="white-space:nowrap;">{{ log.ts }}</td>
+                    <td>
+                      {% if log.source == 'capport' %}
+                        <span class="badge" style="background:#0d6e6e;color:#fff;">CAPPORT</span>
+                      {% else %}
+                        <span class="badge" style="background:#6c757d;color:#fff;">302</span>
+                      {% endif %}
+                    </td>
                     <td class="fw-bold">{{ log.room or '—' }}</td>
                     <td>{{ log.last_name_input or '—' }}</td>
                     <td>
@@ -303,7 +319,7 @@
                   </tr>
                   {% endfor %}
                 {% else %}
-                  <tr><td colspan="10" class="text-center text-muted py-3">No log entries found.</td></tr>
+                  <tr><td colspan="11" class="text-center text-muted py-3">No log entries found.</td></tr>
                 {% endif %}
               </tbody>
             </table>

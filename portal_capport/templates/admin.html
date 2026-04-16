@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CAPPORT Admin</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { background: #f4f6f9; font-family: 'Segoe UI', system-ui, sans-serif; }
+
+    .sidebar {
+      min-height: 100vh;
+      background: #0d5c55;
+      color: #fff;
+      padding: 1.5rem 1rem;
+      width: 210px;
+      flex-shrink: 0;
+    }
+
+    .sidebar .brand {
+      font-weight: 700;
+      font-size: 1rem;
+      color: #fff;
+      text-decoration: none;
+      display: block;
+      margin-bottom: 0.3rem;
+    }
+
+    .sidebar .brand span {
+      opacity: 0.55;
+      font-weight: 400;
+      font-size: 0.75rem;
+      display: block;
+    }
+
+    .sidebar h6 {
+      font-size: 0.68rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.45);
+      margin: 1.2rem 0 0.4rem;
+    }
+
+    .sidebar a.nav-link {
+      color: rgba(255,255,255,0.75);
+      border-radius: 6px;
+      padding: 0.45rem 0.75rem;
+      font-size: 0.88rem;
+    }
+
+    .sidebar a.nav-link:hover { background: rgba(255,255,255,0.12); color: #fff; }
+
+    .flow-badge {
+      display: inline-block;
+      font-size: 0.65rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      background: rgba(255,255,255,0.15);
+      border-radius: 20px;
+      padding: 0.15rem 0.55rem;
+      margin-top: 0.4rem;
+    }
+
+    .main { flex: 1; padding: 2rem; min-width: 0; }
+
+    .page-title { font-weight: 700; font-size: 1.35rem; color: #1a1a2e; margin-bottom: 1.5rem; }
+
+    .card { border: none; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.07); margin-bottom: 1.5rem; }
+    .card-header { background: #fff; border-bottom: 1px solid #eee; font-weight: 600;
+                   border-radius: 10px 10px 0 0 !important; padding: 0.65rem 1rem; }
+
+    table { font-size: 0.875rem; }
+    th { font-weight: 600; color: #555; white-space: nowrap; }
+    td { vertical-align: middle; }
+
+    .btn-xs { padding: 0.2rem 0.5rem; font-size: 0.78rem; }
+
+    /* API response box */
+    .api-response {
+      background: #1a1a2e;
+      color: #a8f0a8;
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      font-family: monospace;
+      font-size: 0.82rem;
+      white-space: pre-wrap;
+      word-break: break-all;
+      max-height: 320px;
+      overflow-y: auto;
+    }
+
+    .api-response.error { color: #f8a5ae; }
+
+    .badge-free    { background: #e3f0ff; color: #0f3460; font-weight: 600; }
+    .badge-premium { background: #fff8e1; color: #b8860b; font-weight: 600; }
+    .badge-public  { background: #f0f0f0; color: #555;    font-weight: 600; }
+    .badge-pending { background: #fff3cd; color: #856404; font-weight: 600; }
+
+    .section-label {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #888;
+      margin-bottom: 0.5rem;
+    }
+  </style>
+</head>
+<body>
+<div class="d-flex">
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <a class="brand" href="/admin">
+      CAPPORT Admin
+      <span>Phase 3 Testing</span>
+    </a>
+    <div class="flow-badge">RFC 8910</div>
+
+    <h6>Navigation</h6>
+    <nav class="nav flex-column gap-1">
+      <a class="nav-link" href="/admin">🔐 FGT Users</a>
+      <a class="nav-link" href="/auth">📶 Auth Page</a>
+      {% if pms_admin_url %}
+      <a class="nav-link" href="{{ pms_admin_url }}" target="_blank">🏨 PMS Admin ↗</a>
+      {% endif %}
+    </nav>
+
+    <h6>API Reference</h6>
+    <div style="font-size:0.72rem; color:rgba(255,255,255,0.5); line-height:1.6; padding: 0 0.75rem;">
+      GET /user/firewall<br>
+      POST /user/firewall/auth<br>
+      POST /user/firewall/deauth
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div class="main">
+    <div class="page-title">FortiGate API Admin</div>
+
+    {% if fgt_error %}
+    <div class="alert alert-warning py-2 mb-3" style="font-size:0.85rem; border-radius:8px;">
+      ⚠ FortiGate unreachable: {{ fgt_error }}
+    </div>
+    {% endif %}
+
+    <div class="row g-3">
+
+      <!-- Left column: FGT users + pending -->
+      <div class="col-lg-7">
+
+        <!-- Live FGT auth table -->
+        <div class="card">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <span>🔐 FortiGate Authenticated Users</span>
+            <a href="/admin/fgt/refresh" class="btn btn-outline-secondary btn-xs">↻ Refresh</a>
+          </div>
+          <div class="card-body p-0">
+            <table class="table table-hover mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th class="ps-3">IP</th>
+                  <th>Username</th>
+                  <th>Group</th>
+                  <th>Duration</th>
+                  <th>Expiry</th>
+                  <th class="pe-3">Deauth</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% if fgt_users %}
+                  {% for u in fgt_users %}
+                  <tr>
+                    <td class="ps-3" style="font-family:monospace;">{{ u.ipaddr }}</td>
+                    <td>{{ u.username }}</td>
+                    <td>
+                      {% for g in u.get('usergroup', []) %}
+                        <span class="badge badge-{{ 'premium' if 'premium' in g.name else ('public' if 'public' in g.name else 'free') }}">
+                          {{ g.name }}
+                        </span>
+                      {% else %}
+                        <span class="text-muted" style="font-size:0.8rem;">none</span>
+                      {% endfor %}
+                    </td>
+                    <td style="font-size:0.82rem;">{{ u.duration_secs }}s</td>
+                    <td style="font-size:0.82rem;">{{ u.expiry_secs }}s</td>
+                    <td class="pe-3">
+                      <form method="POST" action="/admin/fgt/deauth" style="display:inline;"
+                            onsubmit="return confirm('Deauth {{ u.ipaddr }}?')">
+                        <input type="hidden" name="user_id" value="{{ u.id }}">
+                        <input type="hidden" name="ip"      value="{{ u.ipaddr }}">
+                        <button type="submit" class="btn btn-outline-danger btn-xs">Deauth</button>
+                      </form>
+                    </td>
+                  </tr>
+                  {% endfor %}
+                {% else %}
+                  <tr>
+                    <td colspan="6" class="text-center text-muted py-3" style="font-size:0.85rem;">
+                      {% if fgt_error %}FortiGate unreachable{% else %}No authenticated users{% endif %}
+                    </td>
+                  </tr>
+                {% endif %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Pending auth (PMS verified, Phase 3 not pushed) -->
+        {% if pending_auth %}
+        <div class="card">
+          <div class="card-header">⏳ Pending Phase 3 Push</div>
+          <div class="card-body p-0">
+            <table class="table table-hover mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th class="ps-3">IP</th>
+                  <th>Name</th>
+                  <th>Room</th>
+                  <th>Tier</th>
+                  <th class="pe-3">Username</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for p in pending_auth %}
+                <tr>
+                  <td class="ps-3" style="font-family:monospace;">{{ p.ip }}</td>
+                  <td>{{ p.name }}</td>
+                  <td>{{ p.room or '—' }}</td>
+                  <td><span class="badge badge-{{ p.tier }}">{{ p.tier }}</span></td>
+                  <td class="pe-3" style="font-family:monospace; font-size:0.82rem;">{{ p.username }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        {% endif %}
+
+      </div>
+
+      <!-- Right column: manual push form + response -->
+      <div class="col-lg-5">
+
+        <!-- Manual Auth Push -->
+        <div class="card">
+          <div class="card-header">📤 Manual Auth Push  <small class="text-muted fw-normal">(Phase 3)</small></div>
+          <div class="card-body">
+            <form method="POST" action="/admin/fgt/auth">
+              <div class="mb-3">
+                <label class="form-label" style="font-size:0.85rem;">Client IP</label>
+                <input type="text" name="ip" class="form-control form-control-sm"
+                       placeholder="10.x.x.x" required
+                       value="{{ pending_auth[0].ip if pending_auth else '' }}">
+                <div class="form-text" style="font-size:0.75rem;">
+                  IP from Pending table above, or enter manually.
+                </div>
+              </div>
+              <div class="mb-3">
+                <label class="form-label" style="font-size:0.85rem;">Username</label>
+                <select name="username" class="form-select form-select-sm">
+                  <option value="local_public" {% if pending_auth and pending_auth[0].username == 'local_public' %}selected{% endif %}>
+                    local_public  (public · 2 h)
+                  </option>
+                  <option value="local_free" {% if pending_auth and pending_auth[0].username == 'local_free' %}selected{% endif %}>
+                    local_free    (hotel guest · 4 h)
+                  </option>
+                  <option value="local_premium" {% if pending_auth and pending_auth[0].username == 'local_premium' %}selected{% endif %}>
+                    local_premium (premium · 16 h)
+                  </option>
+                </select>
+              </div>
+              <button type="submit" class="btn btn-sm w-100 text-white"
+                      style="background:#0a7c6e;">
+                Push Auth to FortiGate
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <!-- API Response -->
+        {% if api_response %}
+        <div class="card">
+          <div class="card-header">
+            📨 API Response
+            <small class="text-muted fw-normal ms-2">{{ api_response.action }}</small>
+          </div>
+          <div class="card-body pb-2">
+            <div class="section-label">Payload sent</div>
+            <div class="api-response mb-2" style="max-height:80px;">{{ api_response.payload | tojson(indent=2) }}</div>
+
+            <div class="section-label">Response</div>
+            {% if api_response.error %}
+              <div class="api-response error">ERROR: {{ api_response.error }}</div>
+            {% else %}
+              <div class="api-response {% if api_response.response.get('status') != 'success' %}error{% endif %}">
+                {{- api_response.response | tojson(indent=2) -}}
+              </div>
+            {% endif %}
+          </div>
+        </div>
+        {% endif %}
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

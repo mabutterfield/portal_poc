@@ -11,7 +11,9 @@ only thing that changes.
 API
 ---
 POST /api/lookup
-    Body:  { room, last_name, mac, ip, nas_ip }
+    Body:  { room, last_name, mac, ip, nas_ip, source }
+    source: '302' (UAM/redirect flow) | 'capport' (RFC 8910 CAPPORT flow)
+            Defaults to '302' if not supplied (backward compatible).
     200:   { found: true,  first_name, last_name, tier, checkout_dt }
     200:   { found: false }
     Every call is logged to the query_log table.
@@ -93,6 +95,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS query_log (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
             ts              TEXT    DEFAULT (datetime('now')),
+            source          TEXT    DEFAULT '302',
             room            TEXT,
             last_name_input TEXT,
             matched         INTEGER DEFAULT 0,
@@ -105,6 +108,14 @@ def init_db():
             notes           TEXT
         );
     """)
+
+    # Migrate existing DBs that pre-date the source column
+    try:
+        db.execute("ALTER TABLE query_log ADD COLUMN source TEXT DEFAULT '302'")
+        db.commit()
+        logger.info("Migrated query_log: added source column.")
+    except Exception:
+        pass  # Column already exists
 
     # Seed if empty
     count = db.execute('SELECT COUNT(*) FROM guests').fetchone()[0]
@@ -151,10 +162,11 @@ def api_lookup():
     mac        = data.get('mac',    '')
     ip         = data.get('ip',     '')
     nas_ip     = data.get('nas_ip', request.remote_addr)
+    source     = data.get('source', '302')   # '302' or 'capport'
 
     if not room or not last_name:
         _log_query(room, last_name, matched=False, mac=mac, ip=ip,
-                   nas_ip=nas_ip, status='bad_request',
+                   nas_ip=nas_ip, status='bad_request', source=source,
                    notes='Missing room or last_name')
         return jsonify({'found': False}), 200
 
@@ -175,7 +187,7 @@ def api_lookup():
         _log_query(room, last_name, matched=True,
                    matched_name=f"{row['first_name']} {row['last_name']}",
                    returned_tier=row['tier'],
-                   mac=mac, ip=ip, nas_ip=nas_ip, status='matched')
+                   mac=mac, ip=ip, nas_ip=nas_ip, status='matched', source=source)
         return jsonify({
             'found':       True,
             'first_name':  row['first_name'],
@@ -189,21 +201,21 @@ def api_lookup():
             f"mac={mac}, ip={ip}"
         )
         _log_query(room, last_name, matched=False,
-                   mac=mac, ip=ip, nas_ip=nas_ip, status='not_found')
+                   mac=mac, ip=ip, nas_ip=nas_ip, status='not_found', source=source)
         return jsonify({'found': False})
 
 
 def _log_query(room, last_name_input, *, matched, mac='', ip='',
                nas_ip='', returned_tier=None, matched_name=None,
-               status='', notes=''):
+               status='', notes='', source='302'):
     try:
         db = get_db()
         db.execute(
             'INSERT INTO query_log '
-            '(room, last_name_input, matched, matched_name, returned_tier, '
+            '(source, room, last_name_input, matched, matched_name, returned_tier, '
             ' client_mac, client_ip, nas_ip, status, notes) '
-            'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            (room, last_name_input, 1 if matched else 0, matched_name,
+            'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            (source, room, last_name_input, 1 if matched else 0, matched_name,
              returned_tier, mac, ip, nas_ip, status, notes),
         )
         db.commit()
@@ -289,8 +301,9 @@ def guest_delete(guest_id):
 def admin_logs():
     db    = get_db()
     # Optional filters
-    froom  = request.args.get('room', '').strip()
+    froom   = request.args.get('room',   '').strip()
     fstatus = request.args.get('status', '').strip()
+    fsource = request.args.get('source', '').strip()
 
     query  = 'SELECT * FROM query_log WHERE 1=1'
     params = []
@@ -300,11 +313,15 @@ def admin_logs():
     if fstatus:
         query += ' AND status = ?'
         params.append(fstatus)
+    if fsource:
+        query += ' AND source = ?'
+        params.append(fsource)
     query += ' ORDER BY id DESC LIMIT 200'
 
     logs = db.execute(query, params).fetchall()
     return render_template('admin.html', logs=logs, page='logs',
-                           filter_room=froom, filter_status=fstatus)
+                           filter_room=froom, filter_status=fstatus,
+                           filter_source=fsource)
 
 
 @app.route('/admin/logs/clear', methods=['POST'])

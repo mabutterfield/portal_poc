@@ -59,6 +59,53 @@ end
 
 
 --------------------------------------------------------------------------------
+2b. CAPPORT Local Users & Groups (used by REST API / CAPPORT workflow only)
+--------------------------------------------------------------------------------
+
+These are LOCAL FortiGate users, separate from the RADIUS svc_* accounts.
+The portal_capport container pushes these via POST /user/firewall/auth.
+The firewall policies from Section 6 apply to the same groups (public_guests,
+free_guests, premium_guests), so no additional policies are needed.
+
+# Local users — password not used for captive portal API auth, but required
+# by FortiGate. Use a strong random value and store it offline.
+config user local
+    edit "local_public"
+        set type password
+        set passwd <STRONG_RANDOM_PASSWORD>
+    next
+    edit "local_free"
+        set type password
+        set passwd <STRONG_RANDOM_PASSWORD>
+    next
+    edit "local_premium"
+        set type password
+        set passwd <STRONG_RANDOM_PASSWORD>
+    next
+end
+
+# Add local users as members of the existing tier groups.
+# This is what causes groups to appear in GET /user/firewall after API push.
+config user group
+    edit "public_guests"
+        append member "local_public"
+    next
+    edit "free_guests"
+        append member "local_free"
+    next
+    edit "premium_guests"
+        append member "local_premium"
+    next
+end
+
+NOTE: The svc_* RADIUS accounts and local_* local accounts are INDEPENDENT.
+  - svc_*   — authenticated by FreeRADIUS on the 302 (UAM) VLAN
+  - local_* — pushed directly via FortiGate REST API on the CAPPORT VLAN
+  Both sets of users belong to the same tier groups (public_guests, etc.),
+  so the same firewall policies and traffic shapers apply to both flows.
+
+
+--------------------------------------------------------------------------------
 3. Guest Interface
 --------------------------------------------------------------------------------
 
