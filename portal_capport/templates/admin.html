@@ -258,7 +258,7 @@
       <!-- Right column: manual push form + response -->
       <div class="col-lg-5">
 
-        <!-- RSSO Retry -->
+        <!-- RSSO Push -->
         <div class="card">
           <div class="card-header">📡 RSSO Push  <small class="text-muted fw-normal">(Accounting-Start)</small></div>
           <div class="card-body">
@@ -268,9 +268,20 @@
                 <input type="text" name="ip" class="form-control form-control-sm"
                        placeholder="10.x.x.x" required
                        value="{{ pending_auth[0].ip if pending_auth else '' }}">
-                <div class="form-text" style="font-size:0.75rem;">
-                  Uses last_name, group, and session_id from CAPPORT Sessions table.
-                </div>
+              </div>
+              <div class="mb-3">
+                <label class="form-label" style="font-size:0.85rem;">Username (last name)</label>
+                <input type="text" name="username" class="form-control form-control-sm"
+                       placeholder="Guest last name"
+                       value="{{ pending_auth[0].last_name if pending_auth else '' }}">
+              </div>
+              <div class="mb-3">
+                <label class="form-label" style="font-size:0.85rem;">RSSO Group</label>
+                <select name="group" class="form-select form-select-sm">
+                  <option value="rsso_public"  {% if pending_auth and pending_auth[0].tier == 'public'  %}selected{% endif %}>rsso_public  (public · 2 h)</option>
+                  <option value="rsso_free"    {% if pending_auth and pending_auth[0].tier == 'free'    %}selected{% endif %}>rsso_free    (hotel guest · 4 h)</option>
+                  <option value="rsso_premium" {% if pending_auth and pending_auth[0].tier == 'premium' %}selected{% endif %}>rsso_premium (premium · 16 h)</option>
+                </select>
               </div>
               <button type="submit" class="btn btn-sm w-100 text-white"
                       style="background:#0a7c6e;">

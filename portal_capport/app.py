@@ -457,46 +457,38 @@ def admin():
 
 @app.route('/admin/fgt/auth', methods=['POST'])
 def admin_fgt_auth():
-    """Manual RSSO retry — re-sends Accounting-Start for a session in auth_state."""
-    client_ip = request.form.get('ip', '').strip()
-    state     = auth_state.get(client_ip)
+    """
+    Manual RSSO push — sends Accounting-Start with the supplied fields.
+    Fields come directly from the form; auth_state is updated if an entry
+    exists for this IP but the form values always take precedence.
+    """
+    client_ip  = request.form.get('ip',       '').strip()
+    username   = request.form.get('username', '').strip() or 'unknown'
+    group      = request.form.get('group',    'rsso_free').strip()
+    # Reuse existing session_id if we have one; otherwise generate a new one
+    state      = auth_state.get(client_ip, {})
+    session_id = state.get('session_id', f'capport-{client_ip}-{int(time.time())}')
 
-    if not state:
-        users, fgt_error = fgt_get_users()
-        sessions = [{'ip': ip, **s} for ip, s in auth_state.items()]
-        return render_template('admin.html',
-                               fgt_users=users,
-                               fgt_error=fgt_error,
-                               pending_auth=sessions,
-                               pms_admin_url=MOCK_PMS_ADMIN_URL,
-                               api_response={
-                                   'action':   'RSSO Accounting-Start (retry)',
-                                   'payload':  {'ip': client_ip},
-                                   'response': {'status': 'error'},
-                                   'error':    f'No session found in auth_state for {client_ip}',
-                               })
+    ok, err = send_rsso_start(client_ip, username, group, session_id)
 
-    ok, err = send_rsso_start(
-        client_ip,
-        state['last_name'],
-        state['group'],
-        state['session_id'],
-    )
-    state['acct_sent']  = ok
-    state['acct_error'] = err
+    # Update auth_state so deauth has the correct session_id
+    if client_ip in auth_state:
+        auth_state[client_ip]['acct_sent']  = ok
+        auth_state[client_ip]['acct_error'] = err
 
     api_response = {
-        'action':   'RSSO Accounting-Start (retry)',
+        'action':   'RSSO Accounting-Start',
         'payload':  {
             'ip':         client_ip,
-            'username':   state['last_name'],
-            'group':      state['group'],
-            'session_id': state['session_id'],
+            'username':   username,
+            'group':      group,
+            'session_id': session_id,
         },
         'response': {'status': 'success' if ok else 'error'},
         'error':    err,
     }
-    logger.info(f"Admin RSSO retry: ip={client_ip!r} ok={ok} err={err!r}")
+    logger.info(f"Admin RSSO push: ip={client_ip!r} user={username!r} "
+                f"group={group!r} ok={ok} err={err!r}")
 
     users, fgt_error = fgt_get_users()
     sessions = [{'ip': ip, **s} for ip, s in auth_state.items()]
