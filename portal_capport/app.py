@@ -278,10 +278,16 @@ def send_rsso_start(ip: str, username: str, group: str,
     return ok, err
 
 
-def send_rsso_stop(ip: str, username: str, session_id: str) -> tuple[bool, str | None]:
-    """Send RADIUS Accounting-Stop to remove the RSSO session for this IP."""
+def send_rsso_stop(ip: str, username: str, session_id: str,
+                   group: str = '') -> tuple[bool, str | None]:
+    """
+    Send RADIUS Accounting-Stop to remove the RSSO session for this IP.
+    Must mirror the Start packet: same User-Name (rsso-endpoint-attribute),
+    same Class (sso-attribute), same Acct-Session-Id.
+    """
     attrs = (
-        _radius_attr(1,  username.encode())        +  # User-Name
+        _radius_attr(1,  username.encode())        +  # User-Name  (endpoint lookup)
+        _radius_attr(25, group.encode())           +  # Class      (profile/group)
         _radius_attr(8,  socket.inet_aton(ip))     +  # Framed-IP-Address
         _radius_attr(44, session_id.encode())      +  # Acct-Session-Id
         _radius_attr(4,  socket.inet_aton(NAS_IP))    # NAS-IP-Address
@@ -481,10 +487,16 @@ def admin_fgt_auth():
 
     ok, err = send_rsso_start(client_ip, username, group, session_id)
 
-    # Update auth_state so deauth has the correct session_id
-    if client_ip in auth_state:
-        auth_state[client_ip]['acct_sent']  = ok
-        auth_state[client_ip]['acct_error'] = err
+    # Always persist push details so deauth has the correct username,
+    # group, and session_id — even for IPs not in auth_state from /auth flow.
+    auth_state[client_ip] = {
+        **auth_state.get(client_ip, {}),
+        'last_name':  username,
+        'group':      group,
+        'session_id': session_id,
+        'acct_sent':  ok,
+        'acct_error': err,
+    }
 
     api_response = {
         'action':   'RSSO Accounting-Start',
@@ -570,8 +582,9 @@ def admin_fgt_deauth():
     else:
         # RSSO — send Accounting-Stop
         username   = state.get('last_name', 'unknown')
+        group      = state.get('group', '')
         session_id = state.get('session_id', f'capport-{client_ip}-manual')
-        ok, err    = send_rsso_stop(client_ip, username, session_id)
+        ok, err    = send_rsso_stop(client_ip, username, session_id, group)
         logger.info(f"Admin RSSO deauth: ip={client_ip!r} ok={ok} err={err!r}")
         api_response = {
             'action':   'RSSO Accounting-Stop',
