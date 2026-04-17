@@ -1,0 +1,21 @@
+# Minimal RADIUS dictionary for CAPPORT RSSO accounting.
+# Covers only the attributes needed to send Accounting-Start/Stop
+# to FortiGate for RSSO identity injection.
+
+# Standard RADIUS accounting attributes
+ATTRIBUTE User-Name              1    string
+ATTRIBUTE NAS-IP-Address         4    ipaddr
+ATTRIBUTE Framed-IP-Address      8    ipaddr
+ATTRIBUTE Acct-Status-Type       40   integer
+ATTRIBUTE Acct-Session-Id        44   string
+ATTRIBUTE Acct-Session-Time      46   integer
+
+VALUE Acct-Status-Type Start     1
+VALUE Acct-Status-Type Stop      2
+
+# Fortinet vendor-specific attribute — vendor ID 12356
+# Fortinet-Group-Name tells FortiGate which RSSO group to assign the session to.
+VENDOR Fortinet 12356
+BEGIN-VENDOR Fortinet
+ATTRIBUTE Fortinet-Group-Name    1    string
+END-VENDOR Fortinet

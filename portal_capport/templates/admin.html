@@ -114,7 +114,7 @@
   <div class="sidebar">
     <a class="brand" href="/admin">
       CAPPORT Admin
-      <span>Phase 3 Testing</span>
+      <span>RSSO Flow</span>
     </a>
     <div class="flow-badge">RFC 8910</div>
 
@@ -127,17 +127,18 @@
       {% endif %}
     </nav>
 
-    <h6>API Reference</h6>
+    <h6>RADIUS Accounting</h6>
     <div style="font-size:0.72rem; color:rgba(255,255,255,0.5); line-height:1.6; padding: 0 0.75rem;">
-      GET /user/firewall<br>
-      POST /user/firewall/auth<br>
-      POST /user/firewall/deauth
+      Acct-Start → rsso_public<br>
+      Acct-Start → rsso_free<br>
+      Acct-Start → rsso_premium<br>
+      Acct-Stop  → deauth
     </div>
   </div>
 
   <!-- Main -->
   <div class="main">
-    <div class="page-title">FortiGate API Admin</div>
+    <div class="page-title">CAPPORT RSSO Admin</div>
 
     {% if fgt_error %}
     <div class="alert alert-warning py-2 mb-3" style="font-size:0.85rem; border-radius:8px;">
@@ -165,7 +166,7 @@
                   <th>Group</th>
                   <th>Duration</th>
                   <th>Expiry</th>
-                  <th class="pe-3">Deauth</th>
+                  <th class="pe-3">Deauth (RSSO / Local)</th>
                 </tr>
               </thead>
               <tbody>
@@ -189,7 +190,14 @@
                       <form method="POST" action="/admin/fgt/deauth" style="display:inline;"
                             onsubmit="return confirm('Deauth {{ u.ipaddr }}?')">
                         <input type="hidden" name="ip" value="{{ u.ipaddr }}">
-                        <button type="submit" class="btn btn-outline-danger btn-xs">Deauth</button>
+                        <input type="hidden" name="method" value="rsso">
+                        <button type="submit" class="btn btn-outline-warning btn-xs" title="RSSO Accounting-Stop">RSSO</button>
+                      </form>
+                      <form method="POST" action="/admin/fgt/deauth" style="display:inline;"
+                            onsubmit="return confirm('Local deauth {{ u.ipaddr }}?')">
+                        <input type="hidden" name="ip" value="{{ u.ipaddr }}">
+                        <input type="hidden" name="method" value="local">
+                        <button type="submit" class="btn btn-outline-danger btn-xs" title="FGT REST API deauth">Local</button>
                       </form>
                     </td>
                   </tr>
@@ -206,10 +214,10 @@
           </div>
         </div>
 
-        <!-- Pending auth (PMS verified, Phase 3 not pushed) -->
+        <!-- CAPPORT sessions (PMS verified, accounting sent or failed) -->
         {% if pending_auth %}
         <div class="card">
-          <div class="card-header">⏳ Pending Phase 3 Push</div>
+          <div class="card-header">📋 CAPPORT Sessions</div>
           <div class="card-body p-0">
             <table class="table table-hover mb-0">
               <thead class="table-light">
@@ -218,7 +226,8 @@
                   <th>Name</th>
                   <th>Room</th>
                   <th>Tier</th>
-                  <th class="pe-3">Username</th>
+                  <th>RSSO Group</th>
+                  <th class="pe-3">Acct</th>
                 </tr>
               </thead>
               <tbody>
@@ -228,7 +237,14 @@
                   <td>{{ p.name }}</td>
                   <td>{{ p.room or '—' }}</td>
                   <td><span class="badge badge-{{ p.tier }}">{{ p.tier }}</span></td>
-                  <td class="pe-3" style="font-family:monospace; font-size:0.82rem;">{{ p.username }}</td>
+                  <td style="font-family:monospace; font-size:0.82rem;">{{ p.group }}</td>
+                  <td class="pe-3">
+                    {% if p.acct_sent %}
+                      <span class="badge bg-success">sent</span>
+                    {% else %}
+                      <span class="badge bg-danger" title="{{ p.acct_error }}">failed</span>
+                    {% endif %}
+                  </td>
                 </tr>
                 {% endfor %}
               </tbody>
@@ -242,9 +258,9 @@
       <!-- Right column: manual push form + response -->
       <div class="col-lg-5">
 
-        <!-- Manual Auth Push -->
+        <!-- RSSO Retry -->
         <div class="card">
-          <div class="card-header">📤 Manual Auth Push  <small class="text-muted fw-normal">(Phase 3)</small></div>
+          <div class="card-header">📡 RSSO Push  <small class="text-muted fw-normal">(Accounting-Start)</small></div>
           <div class="card-body">
             <form method="POST" action="/admin/fgt/auth">
               <div class="mb-3">
@@ -253,26 +269,39 @@
                        placeholder="10.x.x.x" required
                        value="{{ pending_auth[0].ip if pending_auth else '' }}">
                 <div class="form-text" style="font-size:0.75rem;">
-                  IP from Pending table above, or enter manually.
+                  Uses last_name, group, and session_id from CAPPORT Sessions table.
                 </div>
-              </div>
-              <div class="mb-3">
-                <label class="form-label" style="font-size:0.85rem;">Username</label>
-                <select name="username" class="form-select form-select-sm">
-                  <option value="local_public" {% if pending_auth and pending_auth[0].username == 'local_public' %}selected{% endif %}>
-                    local_public  (public · 2 h)
-                  </option>
-                  <option value="local_free" {% if pending_auth and pending_auth[0].username == 'local_free' %}selected{% endif %}>
-                    local_free    (hotel guest · 4 h)
-                  </option>
-                  <option value="local_premium" {% if pending_auth and pending_auth[0].username == 'local_premium' %}selected{% endif %}>
-                    local_premium (premium · 16 h)
-                  </option>
-                </select>
               </div>
               <button type="submit" class="btn btn-sm w-100 text-white"
                       style="background:#0a7c6e;">
-                Push Auth to FortiGate
+                Send RSSO Accounting-Start
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <!-- Local User Push -->
+        <div class="card">
+          <div class="card-header">🔐 Local User Push  <small class="text-muted fw-normal">(FGT REST API)</small></div>
+          <div class="card-body">
+            <form method="POST" action="/admin/fgt/local-auth">
+              <div class="mb-3">
+                <label class="form-label" style="font-size:0.85rem;">Client IP</label>
+                <input type="text" name="ip" class="form-control form-control-sm"
+                       placeholder="10.x.x.x" required
+                       value="{{ pending_auth[0].ip if pending_auth else '' }}">
+              </div>
+              <div class="mb-3">
+                <label class="form-label" style="font-size:0.85rem;">Local User</label>
+                <select name="username" class="form-select form-select-sm">
+                  <option value="local_public">local_public  (public · 2 h)</option>
+                  <option value="local_free"   {% if pending_auth and pending_auth[0].tier == 'free'    %}selected{% endif %}>local_free    (hotel guest · 4 h)</option>
+                  <option value="local_premium"{% if pending_auth and pending_auth[0].tier == 'premium' %}selected{% endif %}>local_premium (premium · 16 h)</option>
+                </select>
+              </div>
+              <button type="submit" class="btn btn-sm w-100 text-white"
+                      style="background:#0f3460;">
+                Push Local User to FGT Auth Table
               </button>
             </form>
           </div>

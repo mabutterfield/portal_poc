@@ -154,11 +154,17 @@
         {% endif %}
       </div>
 
-      {% if phase3_pending %}
+      {% if acct_sent %}
+      <div class="phase3-notice" style="background:rgba(50,200,100,0.12); border-color:rgba(50,200,100,0.35); color:#a8f0c0;">
+        ✅ <strong>Network access activated.</strong><br>
+        RSSO identity sent to FortiGate. Internet access should be available now.
+      </div>
+      {% else %}
       <div class="phase3-notice">
-        ⚠ <strong>Phase 3 pending.</strong><br>
-        PMS lookup succeeded but identity has not yet been pushed to FortiGate.
-        Use the Admin portal to manually push this IP to the firewall auth table.
+        ⚠ <strong>Accounting failed.</strong><br>
+        PMS lookup succeeded but RSSO accounting could not reach FortiGate.
+        {% if acct_error %}<br><span style="font-family:monospace; font-size:0.78rem;">{{ acct_error }}</span>{% endif %}
+        Please notify staff — admin can retry from the admin portal.
       </div>
       {% endif %}
 

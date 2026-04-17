@@ -262,3 +262,95 @@ diagnose sys session filter src <client-ip>
 diagnose sys session clear
 
 ================================================================================
+
+--------------------------------------------------------------------------------
+8. RSSO Configuration (CAPPORT workflow — RADIUS Accounting identity injection)
+--------------------------------------------------------------------------------
+
+RSSO allows the CAPPORT portal to push authenticated identity to FortiGate via
+RADIUS Accounting-Start packets.  No FSSO agent or FAC required.
+
+FortiGate listens for accounting packets from a trusted source (the portal
+server IP), extracts User-Name and Fortinet-Group-Name, and creates an RSSO
+session that the firewall policy engine treats as fully authenticated.
+
+Step 1: Configure the RSSO accounting listener
+-----------------------------------------------
+config user rsso
+    set status enable
+    set server-secret "<SHARED_SECRET>"   # must match SHARED_SECRET in .env
+    set port 1813
+    set rsso-log-flags all               # optional: log all accounting events
+end
+
+Step 2: Create RSSO user groups (one per tier)
+----------------------------------------------
+config user group
+    edit "rsso_public"
+        set group-type rsso
+    next
+    edit "rsso_free"
+        set group-type rsso
+    next
+    edit "rsso_premium"
+        set group-type rsso
+    next
+end
+
+Step 3: Firewall policies for CAPPORT VLAN (v301) — RSSO groups
+----------------------------------------------------------------
+config firewall policy
+    edit <ID>
+        set name "CAPPORT 301 Public Internet"
+        set srcintf "v301"
+        set dstintf "wan1"
+        set srcaddr "all"
+        set dstaddr "all"
+        set action accept
+        set schedule "always"
+        set service "ALL"
+        set groups "rsso_public"
+        set nat enable
+        set traffic-shaper "shape-public-guest"
+        set traffic-shaper-reverse "shape-public-guest"
+    next
+    edit <ID>
+        set name "CAPPORT 301 Free Internet"
+        set groups "rsso_free"
+        set traffic-shaper "shape-free-guest"
+        set traffic-shaper-reverse "shape-free-guest"
+        # (remaining settings same as above)
+    next
+    edit <ID>
+        set name "CAPPORT 301 Premium Internet"
+        set groups "rsso_premium"
+        set traffic-shaper "shape-premium-guest"
+        set traffic-shaper-reverse "shape-premium-guest"
+        # (remaining settings same as above)
+    next
+end
+
+Step 4: Allow UDP/1813 from portal server to FortiGate
+-------------------------------------------------------
+The portal container sends accounting packets directly to FortiGate port 1813.
+Verify no local-in policy or interface ACL is blocking this traffic.
+
+Step 5: Required .env values
+-----------------------------
+NAS_IP=<portal-server-IP-as-seen-by-FGT>   # source IP of UDP packets
+FGT_RSSO_PORT=1813                          # default RADIUS acct port
+SHARED_SECRET=<same-secret>                 # already set
+
+Step 6: Diagnostic commands
+----------------------------
+# List active RSSO sessions:
+diagnose firewall auth list | grep -A 8 rsso
+
+# Show RSSO configuration:
+show user rsso
+
+# Clear a specific RSSO session (if Accounting-Stop fails):
+diagnose firewall auth filter src <client-ip>
+diagnose firewall auth clear
+
+================================================================================
