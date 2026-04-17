@@ -60,6 +60,7 @@ services:
       - FGT_VERIFY_TLS=${FGT_VERIFY_TLS:-false}
       - CAPPORT_SERVER_URL=${CAPPORT_SERVER_URL:-https://localhost:8443}
       - NAS_IP=${NAS_IP:-127.0.0.1}
+      - FGT_RSSO_IP=${FGT_RSSO_IP:-}
       - FGT_RSSO_PORT=${FGT_RSSO_PORT:-1813}
     depends_on:
       - mock_pms
