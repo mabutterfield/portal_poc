@@ -188,8 +188,7 @@
                     <td class="pe-3">
                       <form method="POST" action="/admin/fgt/deauth" style="display:inline;"
                             onsubmit="return confirm('Deauth {{ u.ipaddr }}?')">
-                        <input type="hidden" name="user_id" value="{{ u.user_id or u.id }}">
-                        <input type="hidden" name="ip"      value="{{ u.ipaddr }}">
+                        <input type="hidden" name="ip" value="{{ u.ipaddr }}">
                         <button type="submit" class="btn btn-outline-danger btn-xs">Deauth</button>
                       </form>
                     </td>

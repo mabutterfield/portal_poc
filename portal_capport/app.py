@@ -121,16 +121,18 @@ def fgt_auth_user(username: str, ip: str) -> tuple[dict, str | None]:
         return {}, str(exc)
 
 
-def fgt_deauth_user(user_id: int, ip: str) -> tuple[dict, str | None]:
+def fgt_deauth_user(ip: str) -> tuple[dict, str | None]:
     """
     POST /api/v2/monitor/user/firewall/deauth
+    Uses IP-only identification — the REST API exposes id=0 for all users,
+    so the internal user_id (visible in CLI) is not available via JSON API.
     Returns (response_dict, error_string).
     """
     url = f'https://{FGT_HOST}/api/v2/monitor/user/firewall/deauth'
     payload = {
         'user_type': 'firewall',
         'method':    'firewall',
-        'users':     [{'id': user_id, 'ip': ip}],
+        'users':     [{'ip': ip}],
     }
     try:
         resp = http.post(url, headers=_fgt_headers(), params={'vdom': FGT_VDOM},
@@ -341,17 +343,16 @@ def admin_fgt_auth():
 
 @app.route('/admin/fgt/deauth', methods=['POST'])
 def admin_fgt_deauth():
-    user_id   = int(request.form.get('user_id', 0))
     client_ip = request.form.get('ip', '').strip()
 
-    resp_data, err = fgt_deauth_user(user_id, client_ip)
+    resp_data, err = fgt_deauth_user(client_ip)
     api_response = {
         'action':   'POST /user/firewall/deauth',
-        'payload':  {'id': user_id, 'ip': client_ip},
+        'payload':  {'ip': client_ip},
         'response': resp_data,
         'error':    err,
     }
-    logger.info(f"Admin FGT deauth: id={user_id}, ip={client_ip!r}, "
+    logger.info(f"Admin FGT deauth: ip={client_ip!r}, "
                 f"result={resp_data.get('status')!r}, err={err!r}")
 
     # Remove from local pending state if present
