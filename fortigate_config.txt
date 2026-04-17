@@ -276,24 +276,40 @@ session that the firewall policy engine treats as fully authenticated.
 
 Step 1: Configure the RSSO accounting listener
 -----------------------------------------------
+FortiGate RSSO sso-attribute controls which RADIUS attribute carries the group
+name.  "Fortinet-Group-Name" (VSA 26/12356) is NOT available as a choice in
+the CLI — the supported standard attributes include Class (attr 25).
+
+We send the RSSO group name in the Class attribute and the guest name in
+User-Name so both appear correctly in the FortiGate auth table.
+
 config user rsso
     set status enable
     set server-secret "<SHARED_SECRET>"   # must match SHARED_SECRET in .env
     set port 1813
+    set sso-attribute Class               # Class attr carries the group name
     set rsso-log-flags all               # optional: log all accounting events
 end
 
 Step 2: Create RSSO user groups (one per tier)
 ----------------------------------------------
+The sso-attribute-value MUST match the Fortinet-Group-Name VSA value sent in
+the Accounting-Start packet.  Without this, FGT accepts the packet but cannot
+assign a group — firewall policy won't match and you'll see "Missing profile
+name" in the accounting debug output.
+
 config user group
     edit "rsso_public"
         set group-type rsso
+        set sso-attribute-value "rsso_public"
     next
     edit "rsso_free"
         set group-type rsso
+        set sso-attribute-value "rsso_free"
     next
     edit "rsso_premium"
         set group-type rsso
+        set sso-attribute-value "rsso_premium"
     next
 end
 

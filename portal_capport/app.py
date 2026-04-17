@@ -71,7 +71,9 @@ FGT_VERIFY_TLS = os.environ.get('FGT_VERIFY_TLS', 'false').lower() not in ('fals
 #              to the local interface on the correct VDOM or FGT will drop it.
 SHARED_SECRET  = os.environ.get('SHARED_SECRET', 'ch4ng3m3')
 FGT_RSSO_PORT  = int(os.environ.get('FGT_RSSO_PORT', '1813'))
-FGT_RSSO_IP    = os.environ.get('FGT_RSSO_IP', os.environ.get('FGT_HOST', '10.255.112.50'))
+FGT_RSSO_IP    = os.environ.get('FGT_RSSO_IP',
+                 os.environ.get('FORTIGATE_IP',
+                 os.environ.get('FGT_HOST', '10.255.112.50')))
 NAS_IP         = os.environ.get('NAS_IP', '127.0.0.1')
 
 # Tier → RSSO group name (must match FortiGate RSSO group config)
@@ -252,15 +254,19 @@ def send_rsso_start(ip: str, username: str, group: str,
                     session_id: str) -> tuple[bool, str | None]:
     """
     Send RADIUS Accounting-Start to FortiGate RSSO listener.
-    Fortinet-Group-Name VSA tells FGT which RSSO group to assign,
-    enabling the matching firewall policy for this client IP.
+
+    FortiGate RSSO uses the Class attribute (attr 25) for group matching:
+      config user rsso → set sso-attribute Class
+    The Class value must match sso-attribute-value in the RSSO user group.
+
+    User-Name carries the guest's name for audit/display in the FGT auth table.
     """
     attrs = (
-        _radius_attr(1,  username.encode())        +  # User-Name
+        _radius_attr(1,  username.encode())        +  # User-Name  (display / audit)
+        _radius_attr(25, group.encode())           +  # Class      (RSSO group lookup)
         _radius_attr(8,  socket.inet_aton(ip))     +  # Framed-IP-Address
         _radius_attr(44, session_id.encode())      +  # Acct-Session-Id
-        _radius_attr(4,  socket.inet_aton(NAS_IP)) +  # NAS-IP-Address
-        _radius_vsa(12356, 1, group.encode())          # Fortinet-Group-Name
+        _radius_attr(4,  socket.inet_aton(NAS_IP))    # NAS-IP-Address
     )
     packet = _build_acct_packet(1, attrs)   # 1 = Start
     ok, err = _send_radius_acct(packet)
