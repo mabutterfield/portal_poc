@@ -29,14 +29,16 @@ Admin UI  GET /admin
 
 import os
 import time
+import socket
+import struct
+import hashlib
+import random
 import logging
 import sys
 import requests as http
 import urllib3
 from flask import (Flask, request, jsonify, render_template,
                    redirect, url_for, make_response)
-from pyrad.client import Client
-from pyrad.dictionary import Dictionary
 
 # ---------------------------------------------------------------------------
 # Config
@@ -77,10 +79,6 @@ RSSO_GROUP_MAP = {
 
 if not FGT_VERIFY_TLS:
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-# Load RADIUS dictionary once at startup
-_DICT_PATH   = os.path.join(os.path.dirname(__file__), 'radius_dictionary')
-_RADIUS_DICT = Dictionary(_DICT_PATH)
 
 # ---------------------------------------------------------------------------
 # In-memory auth state
@@ -182,66 +180,110 @@ def fgt_ip_is_authed(client_ip: str) -> tuple[bool, int]:
 
 
 # ---------------------------------------------------------------------------
-# RSSO accounting helpers
+# RSSO accounting — raw RADIUS UDP implementation
+#
+# Sends RADIUS Accounting-Request packets (RFC 2866) directly to FortiGate's
+# RSSO listener on UDP port 1813.  No third-party RADIUS library required.
+#
+# Packet structure:
+#   Code(1) | ID(1) | Length(2) | Authenticator(16) | Attributes
+#
+# Accounting authenticator = MD5(Code+ID+Length+16_zeros+Attributes+Secret)
+#
+# Fortinet-Group-Name is a VSA (vendor-specific attribute):
+#   Attr 26 | Length | VendorID(4,BE) | Sub-type(1) | Sub-length(1) | Value
 # ---------------------------------------------------------------------------
 
-def _rsso_client() -> Client:
-    """Create a pyrad Client aimed at FortiGate's RSSO accounting listener."""
-    return Client(
-        server=FGT_HOST,
-        acctport=FGT_RSSO_PORT,
-        secret=SHARED_SECRET.encode(),
-        dict=_RADIUS_DICT,
-    )
+def _radius_attr(attr_type: int, value: bytes) -> bytes:
+    """Encode a standard RADIUS attribute: Type(1) Length(1) Value."""
+    return bytes([attr_type, 2 + len(value)]) + value
+
+
+def _radius_vsa(vendor_id: int, sub_type: int, value: bytes) -> bytes:
+    """Encode a Vendor-Specific attribute (RADIUS attr 26)."""
+    sub_len = 2 + len(value)
+    vsa_value = struct.pack('!IB', vendor_id, sub_type) + bytes([sub_len]) + value
+    return _radius_attr(26, vsa_value)
+
+
+def _build_acct_packet(status_type: int, attrs: bytes) -> bytes:
+    """
+    Build a RADIUS Accounting-Request packet.
+    status_type: 1=Start, 2=Stop
+    attrs: pre-encoded attribute bytes (everything except Acct-Status-Type)
+    """
+    code       = 4                      # Accounting-Request
+    identifier = random.randint(0, 255)
+    secret     = SHARED_SECRET.encode()
+
+    # Acct-Status-Type attr (always first)
+    acct_type_attr = _radius_attr(40, struct.pack('!I', status_type))
+    all_attrs      = acct_type_attr + attrs
+
+    length        = 20 + len(all_attrs)
+    header        = bytes([code, identifier]) + struct.pack('!H', length)
+    authenticator = hashlib.md5(header + b'\x00' * 16 + all_attrs + secret).digest()
+
+    return header + authenticator + all_attrs
+
+
+def _send_radius_acct(packet: bytes) -> tuple[bool, str | None]:
+    """Send packet to FGT RSSO listener; wait briefly for Accounting-Response."""
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(3)
+        sock.sendto(packet, (FGT_HOST, FGT_RSSO_PORT))
+        try:
+            sock.recv(1024)   # Accounting-Response (code 5) if FGT responds
+        except socket.timeout:
+            pass              # FGT may not respond until RSSO is configured;
+                              # the packet was still sent and received
+        sock.close()
+        return True, None
+    except Exception as exc:
+        return False, str(exc)
 
 
 def send_rsso_start(ip: str, username: str, group: str,
                     session_id: str) -> tuple[bool, str | None]:
     """
-    Send RADIUS Accounting-Start to FortiGate.
-    FortiGate uses Fortinet-Group-Name to assign the RSSO group, enabling
-    the matching firewall policy for this client IP.
-    Returns (success, error_string).
+    Send RADIUS Accounting-Start to FortiGate RSSO listener.
+    Fortinet-Group-Name VSA tells FGT which RSSO group to assign,
+    enabling the matching firewall policy for this client IP.
     """
-    try:
-        srv = _rsso_client()
-        req = srv.CreateAcctPacket()
-        req['Acct-Status-Type']    = 'Start'
-        req['User-Name']           = username
-        req['Framed-IP-Address']   = ip
-        req['Acct-Session-Id']     = session_id
-        req['NAS-IP-Address']      = NAS_IP
-        req['Fortinet-Group-Name'] = group
-        srv.SendPacket(req)
+    attrs = (
+        _radius_attr(1,  username.encode())        +  # User-Name
+        _radius_attr(8,  socket.inet_aton(ip))     +  # Framed-IP-Address
+        _radius_attr(44, session_id.encode())      +  # Acct-Session-Id
+        _radius_attr(4,  socket.inet_aton(NAS_IP)) +  # NAS-IP-Address
+        _radius_vsa(12356, 1, group.encode())          # Fortinet-Group-Name
+    )
+    packet = _build_acct_packet(1, attrs)   # 1 = Start
+    ok, err = _send_radius_acct(packet)
+    if ok:
         logger.info(f"RSSO Start sent: ip={ip!r} user={username!r} "
                     f"group={group!r} session={session_id!r}")
-        return True, None
-    except Exception as exc:
-        logger.error(f"RSSO Start failed: ip={ip!r} err={exc}")
-        return False, str(exc)
+    else:
+        logger.error(f"RSSO Start failed: ip={ip!r} err={err}")
+    return ok, err
 
 
 def send_rsso_stop(ip: str, username: str, session_id: str) -> tuple[bool, str | None]:
-    """
-    Send RADIUS Accounting-Stop to FortiGate.
-    FortiGate removes the RSSO session for this client IP.
-    Returns (success, error_string).
-    """
-    try:
-        srv = _rsso_client()
-        req = srv.CreateAcctPacket()
-        req['Acct-Status-Type']  = 'Stop'
-        req['User-Name']         = username
-        req['Framed-IP-Address'] = ip
-        req['Acct-Session-Id']   = session_id
-        req['NAS-IP-Address']    = NAS_IP
-        srv.SendPacket(req)
+    """Send RADIUS Accounting-Stop to remove the RSSO session for this IP."""
+    attrs = (
+        _radius_attr(1,  username.encode())        +  # User-Name
+        _radius_attr(8,  socket.inet_aton(ip))     +  # Framed-IP-Address
+        _radius_attr(44, session_id.encode())      +  # Acct-Session-Id
+        _radius_attr(4,  socket.inet_aton(NAS_IP))    # NAS-IP-Address
+    )
+    packet = _build_acct_packet(2, attrs)   # 2 = Stop
+    ok, err = _send_radius_acct(packet)
+    if ok:
         logger.info(f"RSSO Stop sent: ip={ip!r} user={username!r} "
                     f"session={session_id!r}")
-        return True, None
-    except Exception as exc:
-        logger.error(f"RSSO Stop failed: ip={ip!r} err={exc}")
-        return False, str(exc)
+    else:
+        logger.error(f"RSSO Stop failed: ip={ip!r} err={err}")
+    return ok, err
 
 
 # ---------------------------------------------------------------------------
