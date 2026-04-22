@@ -87,12 +87,55 @@ if not FGT_VERIFY_TLS:
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # ---------------------------------------------------------------------------
-# In-memory auth state
-# Keyed by client IP.
-# {name, last_name, tier, room, group, session_id, acct_sent, acct_error}
-# Single worker required (see Dockerfile).
+# Accounting log — append-only list of RSSO accounting events.
+# Capped at ACCT_LOG_MAX entries (oldest dropped when full).
+# Single worker required (see Dockerfile CMD --workers 1).
+#
+# Each entry:
+#   ts         float    Unix timestamp
+#   ip         str      Client IP (Framed-IP-Address)
+#   username   str      Guest last name / 'public_guest'
+#   group      str      RSSO group name (rsso_free etc.)
+#   session_id str      Acct-Session-Id sent in packet
+#   action     str      'start' | 'stop'
+#   source     str      'portal' | 'admin'
+#   name       str      Guest first name (portal entries only)
+#   room       str      Room number (portal entries only)
+#   tier       str      'public' | 'free' | 'premium'
+#   ok         bool     Whether UDP send succeeded
+#   error      str|None Error message if ok=False
 # ---------------------------------------------------------------------------
-auth_state: dict = {}
+ACCT_LOG_MAX = 200
+acct_log: list = []
+
+
+def _log_acct(ip: str, username: str, group: str, session_id: str,
+              action: str, source: str, ok: bool, error,
+              name: str = '', room: str = '', tier: str = '') -> None:
+    acct_log.append({
+        'ts':         time.time(),
+        'ip':         ip,
+        'username':   username,
+        'group':      group,
+        'session_id': session_id,
+        'action':     action,
+        'source':     source,
+        'name':       name,
+        'room':       room,
+        'tier':       tier,
+        'ok':         ok,
+        'error':      error,
+    })
+    if len(acct_log) > ACCT_LOG_MAX:
+        del acct_log[0]
+
+
+def _last_start(ip: str) -> dict:
+    """Return the most recent Accounting-Start log entry for ip, or {}."""
+    for entry in reversed(acct_log):
+        if entry['ip'] == ip and entry['action'] == 'start':
+            return entry
+    return {}
 
 
 # Local user → FGT group mapping for REST API push
@@ -389,16 +432,9 @@ def auth():
     if tier == 'public':
         logger.info(f"CAPPORT public auth from {client_ip}")
         ok, err = send_rsso_start(client_ip, 'public_guest', group, session_id)
-        auth_state[client_ip] = {
-            'name':       'Guest',
-            'last_name':  'public_guest',
-            'tier':       'public',
-            'room':       '',
-            'group':      group,
-            'session_id': session_id,
-            'acct_sent':  ok,
-            'acct_error': err,
-        }
+        _log_acct(client_ip, 'public_guest', group, session_id,
+                  action='start', source='portal', ok=ok, error=err,
+                  name='Guest', room='', tier='public')
         return render_template('result.html',
                                success=True,
                                name='Guest',
@@ -419,16 +455,9 @@ def auth():
     if result.get('found'):
         first_name = result.get('first_name', last_name)
         ok, err = send_rsso_start(client_ip, last_name, group, session_id)
-        auth_state[client_ip] = {
-            'name':       first_name,
-            'last_name':  last_name,
-            'tier':       tier,
-            'room':       room,
-            'group':      group,
-            'session_id': session_id,
-            'acct_sent':  ok,
-            'acct_error': err,
-        }
+        _log_acct(client_ip, last_name, group, session_id,
+                  action='start', source='portal', ok=ok, error=err,
+                  name=first_name, room=room, tier=tier)
         logger.info(
             f"CAPPORT PMS match — name={first_name!r}, room={room!r}, "
             f"tier={tier!r}, group={group!r}, ip={client_ip}, acct_ok={ok}"
@@ -462,11 +491,10 @@ def auth():
 @app.route('/admin')
 def admin():
     users, fgt_error = fgt_get_users()
-    sessions = [{'ip': ip, **state} for ip, state in auth_state.items()]
     return render_template('admin.html',
                            fgt_users=users,
                            fgt_error=fgt_error,
-                           pending_auth=sessions,
+                           acct_log=list(reversed(acct_log)),
                            pms_admin_url=MOCK_PMS_ADMIN_URL,
                            api_response=None)
 
@@ -486,17 +514,8 @@ def admin_fgt_auth():
     session_id = state.get('session_id', f'capport-{client_ip}-{int(time.time())}')
 
     ok, err = send_rsso_start(client_ip, username, group, session_id)
-
-    # Always persist push details so deauth has the correct username,
-    # group, and session_id — even for IPs not in auth_state from /auth flow.
-    auth_state[client_ip] = {
-        **auth_state.get(client_ip, {}),
-        'last_name':  username,
-        'group':      group,
-        'session_id': session_id,
-        'acct_sent':  ok,
-        'acct_error': err,
-    }
+    _log_acct(client_ip, username, group, session_id,
+              action='start', source='admin', ok=ok, error=err)
 
     api_response = {
         'action':   'RSSO Accounting-Start',
@@ -513,11 +532,10 @@ def admin_fgt_auth():
                 f"group={group!r} ok={ok} err={err!r}")
 
     users, fgt_error = fgt_get_users()
-    sessions = [{'ip': ip, **s} for ip, s in auth_state.items()]
     return render_template('admin.html',
                            fgt_users=users,
                            fgt_error=fgt_error,
-                           pending_auth=sessions,
+                           acct_log=list(reversed(acct_log)),
                            pms_admin_url=MOCK_PMS_ADMIN_URL,
                            api_response=api_response)
 
@@ -544,11 +562,10 @@ def admin_fgt_local_auth():
                 f"status={resp_data.get('status')!r} err={err!r}")
 
     users, fgt_error = fgt_get_users()
-    sessions = [{'ip': ip, **s} for ip, s in auth_state.items()]
     return render_template('admin.html',
                            fgt_users=users,
                            fgt_error=fgt_error,
-                           pending_auth=sessions,
+                           acct_log=list(reversed(acct_log)),
                            pms_admin_url=MOCK_PMS_ADMIN_URL,
                            api_response=api_response)
 
@@ -560,31 +577,30 @@ def admin_fgt_deauth():
       rsso  — sends RADIUS Accounting-Stop (default, for RSSO sessions)
       local — calls FGT REST API deauth (for locally-pushed users)
     """
-    client_ip   = request.form.get('ip', '').strip()
-    method      = request.form.get('method', 'rsso')
-    state       = auth_state.get(client_ip, {})
+    client_ip = request.form.get('ip', '').strip()
+    method    = request.form.get('method', 'rsso')
+    last      = _last_start(client_ip)
 
     if method == 'local':
-        # user_id is static per local user on FGT; stored in auth_state if known
-        user_id = int(state.get('fgt_user_id', 0))
+        user_id   = 0   # static per local user; find via 'diagnose firewall auth list'
         resp_data, err = fgt_deauth_user(client_ip, user_id)
-        action  = 'FGT Local Deauth (POST /user/firewall/deauth)'
-        payload = {'ip': client_ip, 'user_id': user_id}
-        ok      = err is None
+        ok        = err is None
         logger.info(f"Admin local deauth: ip={client_ip!r} user_id={user_id} "
                     f"status={resp_data.get('status')!r} err={err!r}")
         api_response = {
-            'action':   action,
-            'payload':  payload,
+            'action':   'FGT Local Deauth (POST /user/firewall/deauth)',
+            'payload':  {'ip': client_ip, 'user_id': user_id},
             'response': resp_data,
             'error':    err,
         }
     else:
-        # RSSO — send Accounting-Stop
-        username   = state.get('last_name', 'unknown')
-        group      = state.get('group', '')
-        session_id = state.get('session_id', f'capport-{client_ip}-manual')
+        # RSSO — mirror the most recent Start for this IP
+        username   = last.get('username', 'unknown')
+        group      = last.get('group', '')
+        session_id = last.get('session_id', f'capport-{client_ip}-manual')
         ok, err    = send_rsso_stop(client_ip, username, session_id, group)
+        _log_acct(client_ip, username, group, session_id,
+                  action='stop', source='admin', ok=ok, error=err)
         logger.info(f"Admin RSSO deauth: ip={client_ip!r} ok={ok} err={err!r}")
         api_response = {
             'action':   'RSSO Accounting-Stop',
@@ -593,14 +609,11 @@ def admin_fgt_deauth():
             'error':    err,
         }
 
-    auth_state.pop(client_ip, None)
-
     users, fgt_error = fgt_get_users()
-    sessions = [{'ip': ip, **s} for ip, s in auth_state.items()]
     return render_template('admin.html',
                            fgt_users=users,
                            fgt_error=fgt_error,
-                           pending_auth=sessions,
+                           acct_log=list(reversed(acct_log)),
                            pms_admin_url=MOCK_PMS_ADMIN_URL,
                            api_response=api_response)
 
@@ -608,6 +621,7 @@ def admin_fgt_deauth():
 @app.route('/admin/fgt/refresh')
 def admin_fgt_refresh():
     return redirect(url_for('admin'))
+
 
 
 # ---------------------------------------------------------------------------
